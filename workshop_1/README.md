@@ -11,7 +11,7 @@
 This project aims to build an end-to-end data engineering and NLP pipeline to analyze how the public perceives music, artists, and albums. By combining quantitative data from APIs and qualitative data from web scraping, we seek to identify patterns and trends that enable informed decision-making in the music market.
 
 ## 2. Validated Data Sources
-In accordance with the workshop requirements, two main sources have been identified and validated[cite: 23, 174]:
+In accordance with the workshop requirements, two main sources have been identified and validated:
 
 * **API Source (Last.fm):** Provides structured metadata such as play counts, listener statistics, and artist tags.
 * **Web Scraping Source (Reddit):** Specifically targeting the `r/musicsuggestions` subreddit to extract organic opinions, recommendations, and complex qualitative data.
