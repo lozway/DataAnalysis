@@ -1,8 +1,7 @@
 # Workshop 1: Project Definition and Source Research
 
 ## Project Title
-[cite_start]**Music Artists & Albums Public Perception** [cite: 134, 145]
-
+**Music Artists & Albums Public Perception** 
 ## Team Members
 * [cite_start]**Carlos Andres Celis Herrera** - 20222020051 [cite: 138]
 * [cite_start]**Juan Diego Lozada Gonzalez** - 20222020014 [cite: 138]
