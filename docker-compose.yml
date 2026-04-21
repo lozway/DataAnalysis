@@ -108,6 +108,9 @@ services:
       - ./airflow/sql:/opt/airflow/sql
       - ./datalake:/opt/airflow/datalake
       - ./pyproject.toml:/opt/airflow/pyproject.toml
+      - ./datalake_bronze:/opt/airflow/datalake_bronze   # ← AGREGADO
+      - ./datalake_silver:/opt/airflow/datalake_silver   # ← AGREGADO
+      - ./datalake_gold:/opt/airflow/datalake_gold 
     depends_on:
       postgres:
         condition: service_healthy
