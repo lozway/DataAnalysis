@@ -16,7 +16,7 @@ from airflow.decorators import dag, task
 # Constantes
 # ──────────────────────────────────────────────
 LASTFM_BASE_URL = "https://ws.audioscrobbler.com/2.0/"
-BRONZE_PATH = "/opt/airflow/datalake/bronze/lastfm"
+BRONZE_PATH = "/opt/airflow/datalake_bronze"
 
 DEFAULT_ARGS = {
     "owner": "airflow",
@@ -115,9 +115,6 @@ def lastfm_ingest_dag():
             content = json.load(f)
 
         artists = content["data"].get("artists", {}).get("artist", [])
-
-        if not artists:
-            raise ValueError("❌ El JSON no contiene artistas")
 
         summary = {
             "filepath": filepath,
