@@ -20,6 +20,7 @@ x-airflow-common: &airflow-common
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/sql:/opt/airflow/sql
     - ./datalake:/opt/airflow/datalake
+    - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ movido al anchor común
   depends_on:
     postgres:
       condition: service_healthy
@@ -70,6 +71,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/sql:/opt/airflow/sql
       - ./datalake:/opt/airflow/datalake
+      - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ agregado
       - ./pyproject.toml:/opt/airflow/pyproject.toml
     restart: "no"
 
@@ -85,6 +87,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/sql:/opt/airflow/sql
       - ./datalake:/opt/airflow/datalake
+      - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ heredado del anchor + explícito
       - ./pyproject.toml:/opt/airflow/pyproject.toml
     depends_on:
       postgres:
@@ -107,10 +110,8 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/sql:/opt/airflow/sql
       - ./datalake:/opt/airflow/datalake
+      - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ limpio, sin silver/gold huérfanos
       - ./pyproject.toml:/opt/airflow/pyproject.toml
-      - ./datalake_bronze:/opt/airflow/datalake_bronze   # ← AGREGADO
-      - ./datalake_silver:/opt/airflow/datalake_silver   # ← AGREGADO
-      - ./datalake_gold:/opt/airflow/datalake_gold 
     depends_on:
       postgres:
         condition: service_healthy
