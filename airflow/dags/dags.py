@@ -31,7 +31,7 @@ DEFAULT_ARGS = {
 @dag(
     dag_id="lastfm_ingest",
     description="Ingesta diaria de top artists desde Last.fm API → bronze layer",
-    schedule="@daily",
+    schedule=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
     default_args=DEFAULT_ARGS,
