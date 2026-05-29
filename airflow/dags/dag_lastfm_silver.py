@@ -1,23 +1,43 @@
 """
 DAG: lastfm_silver
 Responsabilidad: Detecta nuevos JSON en bronze, los normaliza y persiste
-                como CSV limpio en datalake_silver/
+                como Parquet limpio en datalake_silver/
 
 Estructura de entrada (bronze):
     datalake_bronze/lastfm_top_artists/lastfm_top_artists_YYYYMMDD_HHMMSS.json
     datalake_bronze/lastfm_top_tracks/lastfm_top_tracks_YYYYMMDD_HHMMSS.json
 
 Estructura de salida (silver):
-    datalake_silver/lastfm_top_artists/lastfm_top_artists_YYYYMMDD_HHMMSS.csv
-    datalake_silver/lastfm_top_tracks/lastfm_top_tracks_YYYYMMDD_HHMMSS.csv
+    datalake_silver/lastfm_top_artists/lastfm_top_artists_YYYYMMDD_HHMMSS.parquet
+    datalake_silver/lastfm_top_tracks/lastfm_top_tracks_YYYYMMDD_HHMMSS.parquet
 
-Transformaciones aplicadas:
-    Artists: name, name_tokens, playcount (int), listeners (int), mbid
-    Tracks : name, name_tokens, duration_sec (int), playcount (int), listeners (int),
-            mbid, artist_name, artist_name_tokens, artist_mbid
+Schema artists:
+    name          (string, obligatorio)
+    name_tokens   (string, obligatorio)
+    playcount     (int64,  obligatorio)
+    listeners     (int64,  obligatorio)
+    mbid          (string, opcional → 'unknown')
+    ingested_at   (string, obligatorio)
+
+Schema tracks:
+    name               (string, obligatorio)
+    name_tokens        (string, obligatorio)
+    duration_sec       (int64,  obligatorio)
+    playcount          (int64,  obligatorio)
+    listeners          (int64,  obligatorio)
+    mbid               (string, opcional → 'unknown')
+    artist_name        (string, obligatorio)
+    artist_name_tokens (string, obligatorio)
+    artist_mbid        (string, opcional → 'unknown')
+    ingested_at        (string, obligatorio)
 
 Limpieza de name_tokens:
     normalize_text → clean_html → clean_punctuation → remove_links
+
+Manejo de duplicados (por prioridad):
+    1. Duplicados exactos        → eliminar, conservar primero
+    2. Mismo nombre, distinta ingesta → conservar el más reciente
+    3. Mismo nombre, distinto playcount/listeners → conservar el mayor
 """
 
 from __future__ import annotations
@@ -30,6 +50,8 @@ import re
 from datetime import datetime, timedelta
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from airflow.decorators import dag, task
 from airflow.sensors.filesystem import FileSensor
 
@@ -47,6 +69,31 @@ DEFAULT_ARGS = {
     "retries": 2,
     "retry_delay": timedelta(minutes=3),
 }
+
+# ──────────────────────────────────────────────
+# Schemas de destino (PyArrow)
+# ──────────────────────────────────────────────
+ARTISTS_SCHEMA = pa.schema([
+    pa.field("name",         pa.string(),  nullable=False),
+    pa.field("name_tokens",  pa.string(),  nullable=False),
+    pa.field("playcount",    pa.int64(),   nullable=False),
+    pa.field("listeners",    pa.int64(),   nullable=False),
+    pa.field("mbid",         pa.string(),  nullable=True),
+    pa.field("ingested_at",  pa.string(),  nullable=False),
+])
+
+TRACKS_SCHEMA = pa.schema([
+    pa.field("name",               pa.string(), nullable=False),
+    pa.field("name_tokens",        pa.string(), nullable=False),
+    pa.field("duration_sec",       pa.int64(),  nullable=False),
+    pa.field("playcount",          pa.int64(),  nullable=False),
+    pa.field("listeners",          pa.int64(),  nullable=False),
+    pa.field("mbid",               pa.string(), nullable=True),
+    pa.field("artist_name",        pa.string(), nullable=False),
+    pa.field("artist_name_tokens", pa.string(), nullable=False),
+    pa.field("artist_mbid",        pa.string(), nullable=True),
+    pa.field("ingested_at",        pa.string(), nullable=False),
+])
 
 # ──────────────────────────────────────────────
 # Funciones de limpieza de texto
@@ -72,46 +119,117 @@ def clean_punctuation(content: str) -> str:
     return content
 
 
-def clean_html(content: str) -> str:
+def clean_html_entities(content: str) -> str:
     """Decodifica entidades HTML (ej: &amp; → &, &#39; → ')."""
     return html.unescape(content)
 
 
 def build_name_tokens(name: str) -> str:
     """
-    Aplica el pipeline completo de limpieza sobre un nombre y retorna
-    el texto normalizado listo para tokenizar o indexar.
-    Pipeline: normalize_text → clean_html → clean_punctuation → remove_links
+    Pipeline completo de limpieza sobre un nombre.
+    normalize_text → clean_html → clean_punctuation → remove_links
     """
     name = normalize_text(name)
-    name = clean_html(name)
+    name = clean_html_entities(name)
     name = clean_punctuation(name)
     name = remove_links(name)
     return name.strip()
 
 
 # ──────────────────────────────────────────────
+# Manejo de duplicados
+# ──────────────────────────────────────────────
+def deduplicate(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, int]:
+    """
+    Elimina duplicados en tres pasos por prioridad:
+    1. Duplicados exactos        → conservar el primero
+    2. Mismo nombre, distinta ingesta → conservar el más reciente (ingested_at mayor)
+    3. Mismo nombre, distinto playcount/listeners → conservar el de mayor playcount
+
+    Retorna el DataFrame limpio y el total de duplicados eliminados.
+    """
+    before = len(df)
+
+    # Paso 1 — duplicados exactos
+    df = df.drop_duplicates(keep="first")
+
+    # Paso 2 — mismo nombre, distinta fecha de ingesta → más reciente
+    df = (
+        df.sort_values("ingested_at", ascending=False)
+        .drop_duplicates(subset=[key], keep="first")
+    )
+
+    # Paso 3 — mismo nombre, mayor playcount
+    df = (
+        df.sort_values("playcount", ascending=False)
+        .drop_duplicates(subset=[key], keep="first")
+    )
+
+    dropped = before - len(df)
+    return df.reset_index(drop=True), dropped
+
+
+# ──────────────────────────────────────────────
 # Funciones auxiliares
 # ──────────────────────────────────────────────
 def _get_latest_bronze_file(folder: str) -> str:
-    """
-    Retorna el archivo JSON más reciente en la carpeta bronze indicada.
-    Lanza FileNotFoundError si no hay archivos.
-    """
+    """Retorna el JSON más reciente en la carpeta bronze indicada."""
     files = sorted(glob.glob(os.path.join(folder, "*.json")))
     if not files:
         raise FileNotFoundError(f"No se encontraron archivos JSON en: {folder}")
     return files[-1]
 
 
-def _save_silver_csv(df: pd.DataFrame, folder: str, filename: str) -> str:
+def _enforce_schema(df: pd.DataFrame, schema: pa.Schema) -> pd.DataFrame:
     """
-    Persiste el DataFrame como CSV en la carpeta silver indicada.
-    Retorna el filepath completo.
+    Aplica el schema de destino al DataFrame:
+    - Verifica que todos los campos obligatorios estén presentes
+    - Rellena nulos en campos opcionales con 'unknown'
+    - Castea tipos según el schema
+    - Lanza SchemaError si un campo obligatorio tiene nulos
     """
+    required_fields = [f.name for f in schema if not f.nullable]
+    optional_fields = [f.name for f in schema if f.nullable]
+
+    # Verificar campos obligatorios presentes
+    missing = [f for f in required_fields if f not in df.columns]
+    if missing:
+        raise ValueError(f"❌ Schema error — campos obligatorios faltantes: {missing}")
+
+    # Nulos en campos obligatorios → error
+    for field in required_fields:
+        null_count = df[field].isnull().sum()
+        if null_count > 0:
+            raise ValueError(
+                f"❌ Schema error — campo obligatorio '{field}' tiene {null_count} nulos"
+            )
+
+    # Nulos en campos opcionales → 'unknown'
+    for field in optional_fields:
+        if field in df.columns:
+            filled = df[field].isnull().sum()
+            if filled > 0:
+                df[field] = df[field].fillna("unknown")
+                print(f"   ℹ️  '{field}': {filled} nulos reemplazados con 'unknown'")
+
+    # Castear tipos
+    for field in schema:
+        if field.name not in df.columns:
+            continue
+        if pa.types.is_integer(field.type):
+            df[field.name] = df[field.name].astype("int64")
+        elif pa.types.is_string(field.type):
+            df[field.name] = df[field.name].astype("string")
+
+    return df
+
+
+def _save_parquet(df: pd.DataFrame, schema: pa.Schema, folder: str, filename: str) -> str:
+    """Persiste el DataFrame como Parquet con el schema definido."""
     os.makedirs(folder, exist_ok=True)
     filepath = os.path.join(folder, filename)
-    df.to_csv(filepath, index=False, encoding="utf-8")
+    table = pa.Table.from_pandas(df, schema=schema, preserve_index=False)
+    pq.write_table(table, filepath, compression="snappy")
     return filepath
 
 
@@ -129,14 +247,13 @@ def _save_silver_csv(df: pd.DataFrame, folder: str, filename: str) -> str:
 )
 def lastfm_silver_dag():
 
-    # ── Sensores: esperan que exista al menos un JSON en cada carpeta bronze ──
-
+    # ── Sensores ──────────────────────────────────────────────────────────
     wait_for_artists = FileSensor(
         task_id="wait_for_artists_bronze",
-        filepath=BRONZE_ARTISTS_PATH,           # detecta que la carpeta tenga contenido
+        filepath=BRONZE_ARTISTS_PATH,
         fs_conn_id="fs_default",
-        poke_interval=30,                        # revisa cada 30 segundos
-        timeout=60 * 10,                         # falla si no aparece en 10 minutos
+        poke_interval=30,
+        timeout=60 * 10,
         mode="poke",
         soft_fail=False,
     )
@@ -154,12 +271,6 @@ def lastfm_silver_dag():
     # ── Tarea 1: Transformar Top Artists ─────────────────────────────────
     @task()
     def transform_top_artists() -> str:
-        """
-        Lee el JSON más reciente de bronze/lastfm_top_artists/ y produce un CSV
-        con las columnas normalizadas:
-            name | name_tokens | playcount | listeners | mbid | ingested_at
-        Descarta: url, streamable, image (array de URLs de thumbnails)
-        """
         filepath = _get_latest_bronze_file(BRONZE_ARTISTS_PATH)
         print(f"📂 Procesando: {filepath}")
 
@@ -173,27 +284,37 @@ def lastfm_silver_dag():
         for artist in artists:
             name = artist.get("name", "").strip()
             rows.append({
-                "name":         name,
-                "name_tokens":  build_name_tokens(name),
-                "playcount":    int(artist.get("playcount", 0)),
-                "listeners":    int(artist.get("listeners", 0)),
-                "mbid":         artist.get("mbid", ""),
-                "ingested_at":  ingested_at,
+                "name":        name,
+                "name_tokens": build_name_tokens(name),
+                "playcount":   int(artist.get("playcount", 0)),
+                "listeners":   int(artist.get("listeners", 0)),
+                "mbid":        artist.get("mbid") or None,
+                "ingested_at": ingested_at,
             })
 
         df = pd.DataFrame(rows)
 
-        # Validaciones de calidad
+        # 1. Filtrar registros inválidos (campos obligatorios vacíos o playcount=0)
         before = len(df)
-        df = df.dropna(subset=["name"]).query("name != ''")
+        df = df[df["name"].str.strip().ne("") & df["name"].notna()]
         df = df[df["playcount"] > 0]
-        dropped = before - len(df)
-        if dropped:
-            print(f"⚠️  Se descartaron {dropped} registros inválidos")
+        invalid = before - len(df)
+        if invalid:
+            print(f"⚠️  {invalid} registros inválidos descartados")
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filepath_out = _save_silver_csv(
-            df, SILVER_ARTISTS_PATH, f"lastfm_top_artists_{timestamp}.csv"
+        # 2. Deduplicar
+        df, dupes = deduplicate(df, key="name")
+        if dupes:
+            print(f"⚠️  {dupes} duplicados eliminados")
+
+        # 3. Aplicar schema y castear tipos
+        df = _enforce_schema(df, ARTISTS_SCHEMA)
+
+        # 4. Persistir como Parquet
+        timestamp   = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filepath_out = _save_parquet(
+            df, ARTISTS_SCHEMA, SILVER_ARTISTS_PATH,
+            f"lastfm_top_artists_{timestamp}.parquet"
         )
 
         print(f"✅ Artists silver — {len(df)} registros → {filepath_out}")
@@ -204,13 +325,6 @@ def lastfm_silver_dag():
     # ── Tarea 2: Transformar Top Tracks ──────────────────────────────────
     @task()
     def transform_top_tracks() -> str:
-        """
-        Lee el JSON más reciente de bronze/lastfm_top_tracks/ y produce un CSV
-        con las columnas normalizadas:
-            name | name_tokens | duration_sec | playcount | listeners | mbid |
-            artist_name | artist_name_tokens | artist_mbid | ingested_at
-        Descarta: url, artist_url, streamable (siempre 0), image (array de thumbnails)
-        """
         filepath = _get_latest_bronze_file(BRONZE_TRACKS_PATH)
         print(f"📂 Procesando: {filepath}")
 
@@ -231,26 +345,41 @@ def lastfm_silver_dag():
                 "duration_sec":       int(track.get("duration", 0)),
                 "playcount":          int(track.get("playcount", 0)),
                 "listeners":          int(track.get("listeners", 0)),
-                "mbid":               track.get("mbid", ""),
+                "mbid":               track.get("mbid") or None,
                 "artist_name":        artist_name,
                 "artist_name_tokens": build_name_tokens(artist_name),
-                "artist_mbid":        artist.get("mbid", ""),
+                "artist_mbid":        artist.get("mbid") or None,
                 "ingested_at":        ingested_at,
             })
 
         df = pd.DataFrame(rows)
 
-        # Validaciones de calidad
+        # 1. Filtrar registros inválidos
         before = len(df)
-        df = df.dropna(subset=["name", "artist_name"]).query("name != '' and artist_name != ''")
+        df = df[
+            df["name"].str.strip().ne("") & df["name"].notna() &
+            df["artist_name"].str.strip().ne("") & df["artist_name"].notna()
+        ]
         df = df[df["playcount"] > 0]
-        dropped = before - len(df)
-        if dropped:
-            print(f"⚠️  Se descartaron {dropped} registros inválidos")
+        invalid = before - len(df)
+        if invalid:
+            print(f"⚠️  {invalid} registros inválidos descartados")
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filepath_out = _save_silver_csv(
-            df, SILVER_TRACKS_PATH, f"lastfm_top_tracks_{timestamp}.csv"
+        # 2. Deduplicar por nombre de track + artista
+        df["_dedup_key"] = df["name"] + "||" + df["artist_name"]
+        df, dupes = deduplicate(df, key="_dedup_key")
+        df = df.drop(columns=["_dedup_key"])
+        if dupes:
+            print(f"⚠️  {dupes} duplicados eliminados")
+
+        # 3. Aplicar schema y castear tipos
+        df = _enforce_schema(df, TRACKS_SCHEMA)
+
+        # 4. Persistir como Parquet
+        timestamp    = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filepath_out = _save_parquet(
+            df, TRACKS_SCHEMA, SILVER_TRACKS_PATH,
+            f"lastfm_top_tracks_{timestamp}.parquet"
         )
 
         print(f"✅ Tracks silver — {len(df)} registros → {filepath_out}")
@@ -262,24 +391,33 @@ def lastfm_silver_dag():
     @task()
     def validate_silver_files(artists_filepath: str, tracks_filepath: str) -> dict:
         """
-        Verifica que ambos CSV existen y tienen datos.
-        Retorna un resumen consolidado de la transformación.
+        Verifica que ambos Parquet existen, respetan el schema y tienen datos.
         """
         summary = {}
 
-        for label, filepath in [("artists", artists_filepath), ("tracks", tracks_filepath)]:
+        for label, filepath, schema in [
+            ("artists", artists_filepath, ARTISTS_SCHEMA),
+            ("tracks",  tracks_filepath,  TRACKS_SCHEMA),
+        ]:
             if not os.path.exists(filepath):
-                raise FileNotFoundError(f"❌ CSV no encontrado: {filepath}")
+                raise FileNotFoundError(f"❌ Parquet no encontrado: {filepath}")
 
-            df = pd.read_csv(filepath)
+            table = pq.read_table(filepath)
 
-            if df.empty:
-                raise ValueError(f"❌ El CSV de {label} está vacío: {filepath}")
+            if table.num_rows == 0:
+                raise ValueError(f"❌ El Parquet de {label} está vacío")
+
+            # Verificar schema
+            for field in schema:
+                if field.name not in table.schema.names:
+                    raise ValueError(f"❌ Campo '{field.name}' faltante en {label}")
+
+            df = table.to_pandas()
 
             summary[label] = {
                 "filepath":   filepath,
-                "rows":       len(df),
-                "columns":    list(df.columns),
+                "rows":       table.num_rows,
+                "columns":    table.schema.names,
                 "top_name":   df.iloc[0]["name"],
                 "null_count": int(df.isnull().sum().sum()),
             }
