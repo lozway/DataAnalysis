@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run ingestion
+      - name: Run ingestion (top artists + top tracks)
         env:
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
         run: python ingest_lastfm.py
@@ -31,7 +31,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add datalake_bronze/
+          git add datalake_bronze/lastfm_top_artists/ datalake_bronze/lastfm_top_tracks/
           git diff --staged --quiet || (
             git commit -m "chore: lastfm ingestion $(date -u +%Y-%m-%d)" &&
             git push

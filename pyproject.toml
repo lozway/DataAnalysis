@@ -3,9 +3,8 @@ name = "dataanalysis"
 version = "0.1.0"
 description = "Data analysis how the public perceives musicians, album and music trends"
 authors = [
-    {name = "cacelish@udistrital.edu.co",
-            "juanlozadaus@gmail.com"
-    }
+    {name = "cacelish@udistrital.edu.co"},
+    {name = "juanlozadaus@gmail.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"

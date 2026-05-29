@@ -63,7 +63,10 @@ services:
           --firstname Admin \
           --lastname User \
           --role Admin \
-          --email "$${AIRFLOW_ADMIN_EMAIL}" || true
+          --email "$${AIRFLOW_ADMIN_EMAIL}" || true &&
+        airflow connections add fs_default \
+          --conn-type fs \
+          --conn-extra '{"path": "/"}' || true
 
     working_dir: /opt/airflow
     volumes:
