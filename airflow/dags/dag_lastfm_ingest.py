@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 
 import requests
 from airflow.decorators import dag, task
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 # ──────────────────────────────────────────────
 # Constantes
@@ -215,9 +216,17 @@ def lastfm_ingest_dag():
 
     # ── Orquestación ──────────────────────────────────────────────────────
     # Las dos extracciones corren en paralelo; la validación espera a ambas
+    # y solo si pasa dispara el DAG de silver
+    trigger_silver = TriggerDagRunOperator(
+        task_id="trigger_silver_dag",
+        trigger_dag_id="lastfm_silver",
+        wait_for_completion=False,  # bronze no bloquea esperando a silver
+    )
+
     tracks_path  = extract_top_tracks()
     artists_path = extract_top_artists()
-    validate_bronze_files(tracks_path, artists_path)
+    summary      = validate_bronze_files(tracks_path, artists_path)
+    summary >> trigger_silver
 
 
 lastfm_ingest_dag()

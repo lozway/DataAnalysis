@@ -1,7 +1,7 @@
 """
 DAG: lastfm_silver
 Responsabilidad: Detecta nuevos JSON en bronze, los normaliza y persiste
-                 como CSV limpio en datalake_silver/
+                como CSV limpio en datalake_silver/
 
 Estructura de entrada (bronze):
     datalake_bronze/lastfm_top_artists/lastfm_top_artists_YYYYMMDD_HHMMSS.json
@@ -14,7 +14,7 @@ Estructura de salida (silver):
 Transformaciones aplicadas:
     Artists: name, name_tokens, playcount (int), listeners (int), mbid
     Tracks : name, name_tokens, duration_sec (int), playcount (int), listeners (int),
-             mbid, artist_name, artist_name_tokens, artist_mbid
+            mbid, artist_name, artist_name_tokens, artist_mbid
 
 Limpieza de name_tokens:
     normalize_text → clean_html → clean_punctuation → remove_links
