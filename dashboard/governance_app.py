@@ -3,19 +3,19 @@ Governance Dashboard — Data quality KPIs for the music pipeline.
 Run: python dashboard/governance_app.py
 URL: http://localhost:8050
 """
-
+ 
 import sys
 import os
-
+ 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
+ 
 import dash
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 from dash import Input, Output, State, dash_table, dcc, html
-
+ 
 from utils import (
     COLORS,
     SOURCE_COLORS,
@@ -25,7 +25,7 @@ from utils import (
     load_governance,
     severity_color,
 )
-
+ 
 # ── App init ──────────────────────────────────────────────────────────────────
 app = dash.Dash(
     __name__,
@@ -36,10 +36,10 @@ app = dash.Dash(
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 server = app.server  # expose Flask server for gunicorn
-
-
+ 
+ 
 # ── Reusable components ───────────────────────────────────────────────────────
-
+ 
 def kpi_card(title: str, value: str, subtitle: str = "", accent: str = COLORS["primary"]):
     return dbc.Card(
         dbc.CardBody([
@@ -51,8 +51,8 @@ def kpi_card(title: str, value: str, subtitle: str = "", accent: str = COLORS["p
         className="shadow-sm h-100",
         style={"borderTop": f"4px solid {accent}", "borderRadius": "8px"},
     )
-
-
+ 
+ 
 def section_card(title: str, graph_id: str):
     return dbc.Card(
         dbc.CardBody([
@@ -63,10 +63,10 @@ def section_card(title: str, graph_id: str):
         className="shadow-sm h-100",
         style={"borderRadius": "8px"},
     )
-
-
+ 
+ 
 # ── Layout ────────────────────────────────────────────────────────────────────
-
+ 
 app.layout = dbc.Container(
     [
         # ── Header ────────────────────────────────────────────────────────────
@@ -97,10 +97,10 @@ app.layout = dbc.Container(
             className="py-3 mb-4 align-items-center",
             style={"borderBottom": f"2px solid {COLORS['primary']}"},
         ),
-
+ 
         # ── KPI Cards row ─────────────────────────────────────────────────────
         dbc.Row(id="gov-kpi-row", className="g-3 mb-4"),
-
+ 
         # ── Null rate + Outlier rate ───────────────────────────────────────────
         dbc.Row(
             [
@@ -109,7 +109,7 @@ app.layout = dbc.Container(
             ],
             className="g-3 mb-4",
         ),
-
+ 
         # ── Volume by source + Text length ────────────────────────────────────
         dbc.Row(
             [
@@ -118,7 +118,7 @@ app.layout = dbc.Container(
             ],
             className="g-3 mb-4",
         ),
-
+ 
         # ── Full KPI table ────────────────────────────────────────────────────
         dbc.Card(
             [
@@ -132,7 +132,7 @@ app.layout = dbc.Container(
             className="shadow-sm mb-4",
             style={"borderRadius": "8px"},
         ),
-
+ 
         # Poll gold folder every 15 s; re-render only when files change
         dcc.Interval(id="gov-interval", interval=15 * 1000, n_intervals=0),
         dcc.Store(id="gov-file-state", data=""),
@@ -140,10 +140,10 @@ app.layout = dbc.Container(
     fluid=True,
     style={"backgroundColor": COLORS["background"], "minHeight": "100vh", "padding": "0 24px 32px"},
 )
-
-
+ 
+ 
 # ── Callback ──────────────────────────────────────────────────────────────────
-
+ 
 @app.callback(
     Output("gov-kpi-row",       "children"),
     Output("gov-null-chart",    "figure"),
@@ -159,13 +159,13 @@ app.layout = dbc.Container(
 )
 def update_governance(_interval, _clicks, stored_state):
     current_state = gold_state_key()
-
+ 
     # Skip re-render if the gold folder hasn't changed since last render
     # (always render on manual refresh or first load)
     if dash.ctx.triggered_id == "gov-interval" and current_state == stored_state:
         return (dash.no_update,) * 8
     df = load_governance()
-
+ 
     if df.empty:
         empty_fig = go.Figure()
         empty_fig.add_annotation(text="No data — run gold_pipeline DAG",
@@ -173,24 +173,24 @@ def update_governance(_interval, _clicks, stored_state):
         empty_fig.update_layout(plot_bgcolor="white", paper_bgcolor="white")
         alert = dbc.Alert("No governance data found. Run the gold_pipeline DAG first.", color="warning")
         return [], empty_fig, empty_fig, empty_fig, empty_fig, alert, "N/A", current_state
-
+ 
     # ── KPI cards ─────────────────────────────────────────────────────────────
     def get_val(source, kpi, field="ALL"):
         sub = df[(df["source"] == source) & (df["kpi_type"] == kpi) & (df["field_name"] == field)]
         return sub["value"].iloc[0] if not sub.empty else None
-
+ 
     vol_reddit  = get_val("reddit",         "volume")
     vol_artists = get_val("lastfm_artists", "volume")
     vol_tracks  = get_val("lastfm_tracks",  "volume")
     compliance  = df[df["kpi_type"] == "schema_compliance"]["value"].mean()
-
+ 
     null_rates  = df[(df["kpi_type"] == "null_rate") & (df["value"] > 0)]
     max_null    = null_rates["value"].max() if not null_rates.empty else 0
     max_field   = (null_rates.loc[null_rates["value"].idxmax(), "field_name"]
                    if not null_rates.empty else "—")
-
+ 
     outlier_avg = df[df["kpi_type"] == "outlier_rate"]["value"].mean()
-
+ 
     kpi_cards = [
         dbc.Col(kpi_card("Reddit Comments",     f"{int(vol_reddit):,}" if vol_reddit else "—",
                          "total processed records", COLORS["reddit"]), md=3),
@@ -202,7 +202,7 @@ def update_governance(_interval, _clicks, stored_state):
                          f"field: {max_field}",
                          severity_color(max_null)), md=3),
     ]
-
+ 
     # ── Null rate chart ───────────────────────────────────────────────────────
     null_df = (
         df[df["kpi_type"] == "null_rate"]
@@ -224,7 +224,7 @@ def update_governance(_interval, _clicks, stored_state):
         xaxis_title="Null Rate (%)",
         font=dict(family="Inter, sans-serif", size=11),
     )
-
+ 
     # ── Outlier rate chart ────────────────────────────────────────────────────
     out_df = (
         df[df["kpi_type"] == "outlier_rate"]
@@ -246,7 +246,7 @@ def update_governance(_interval, _clicks, stored_state):
         xaxis_title="Outlier Rate (%)",
         font=dict(family="Inter, sans-serif", size=11),
     )
-
+ 
     # ── Volume by source ──────────────────────────────────────────────────────
     vol_df = df[df["kpi_type"] == "volume"].copy()
     vol_df["label"] = vol_df["source"].map(SOURCE_LABELS).fillna(vol_df["source"])
@@ -265,7 +265,7 @@ def update_governance(_interval, _clicks, stored_state):
         xaxis_tickangle=-15,
         font=dict(family="Inter, sans-serif", size=11),
     )
-
+ 
     # ── Text length mean ──────────────────────────────────────────────────────
     tl_df = (
         df[df["kpi_type"] == "text_len_mean"]
@@ -287,12 +287,12 @@ def update_governance(_interval, _clicks, stored_state):
         xaxis_title="Mean Length (characters)",
         font=dict(family="Inter, sans-serif", size=11),
     )
-
+ 
     # ── Data quality table ────────────────────────────────────────────────────
-    table_df = df[["source", "field_name", "kpi_type", "value", "unit", "data_date"]].copy()
+    table_df = df[["source", "field_name", "kpi_type", "value", "unit", "ingest_date"]].copy()
     table_df["value"] = table_df["value"].round(3)
-    table_df.columns = ["Source", "Field", "KPI", "Value", "Unit", "Data Date"]
-
+    table_df.columns = ["Source", "Field", "KPI", "Value", "Unit", "Ingest Date"]
+ 
     table = dash_table.DataTable(
         data=table_df.to_dict("records"),
         columns=[{"name": c, "id": c} for c in table_df.columns],
@@ -325,13 +325,13 @@ def update_governance(_interval, _clicks, stored_state):
              "backgroundColor": "#fef9c3"},
         ],
     )
-
+ 
     return (
         kpi_cards, fig_null, fig_out, fig_vol, fig_tl,
         table, f"Last updated: {last_updated(df)}", current_state,
     )
-
-
+ 
+ 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=8050)

@@ -52,30 +52,51 @@ SOURCE_LABELS = {
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
+#
+# Gold usa particionamiento mensual:
+#   datalake_gold/<name>/year=YYYY/month=MM/<name>.parquet
+#
+# load_* lee TODAS las particiones históricas y las concatena en un único
+# DataFrame, permitiendo análisis cross-month. Para filtrar por período
+# específico usa los campos ingest_date o computed_at del DataFrame resultante.
 
-def _latest_file(pattern: str) -> str | None:
-    files = sorted(glob.glob(os.path.join(GOLD_DIR, pattern)))
-    return files[-1] if files else None
+def _load_gold_dataset(name: str) -> pd.DataFrame:
+    """
+    Lee todas las particiones de un dataset de gold (governance o storytelling)
+    concatenándolas en un único DataFrame ordenado por computed_at.
+
+    Busca en:  datalake_gold/<name>/year=*/month=*/<name>.parquet
+    Fallback:  notebooks/export_<name>.csv  (desarrollo sin gold generado)
+    """
+    pattern  = os.path.join(GOLD_DIR, name, "year=*", "month=*", f"{name}.parquet")
+    files    = sorted(glob.glob(pattern))
+
+    if files:
+        dfs = [pd.read_parquet(f) for f in files]
+        df  = pd.concat(dfs, ignore_index=True)
+        # Normalizar nombre del campo de fecha — el DAG puede haberlo escrito
+        # como 'data_date' o 'ingest_date' según la versión; estandarizamos a 'ingest_date'
+        if "data_date" in df.columns and "ingest_date" not in df.columns:
+            df = df.rename(columns={"data_date": "ingest_date"})
+        # Ordenar por computed_at para que .max() retorne siempre el más reciente
+        if "computed_at" in df.columns:
+            df = df.sort_values("computed_at").reset_index(drop=True)
+        return df
+
+    # Fallback CSV para desarrollo local sin gold generado
+    csv = os.path.join(NB_DIR, f"export_{name}.csv")
+    if os.path.exists(csv):
+        return pd.read_csv(csv)
+
+    return pd.DataFrame()
 
 
 def load_governance() -> pd.DataFrame:
-    path = _latest_file("governance_*.parquet")
-    if path:
-        return pd.read_parquet(path)
-    csv = os.path.join(NB_DIR, "export_governance.csv")
-    if os.path.exists(csv):
-        return pd.read_csv(csv)
-    return pd.DataFrame()
+    return _load_gold_dataset("governance")
 
 
 def load_storytelling() -> pd.DataFrame:
-    path = _latest_file("storytelling_*.parquet")
-    if path:
-        return pd.read_parquet(path)
-    csv = os.path.join(NB_DIR, "export_storytelling.csv")
-    if os.path.exists(csv):
-        return pd.read_csv(csv)
-    return pd.DataFrame()
+    return _load_gold_dataset("storytelling")
 
 
 def last_updated(df: pd.DataFrame) -> str:
@@ -96,13 +117,15 @@ def severity_color(value: float) -> str:
 
 def gold_state_key() -> str:
     """
-    Returns a fingerprint of the datalake_gold/ folder state.
-    Changes when Parquet files are added, removed, or modified —
-    used by dashboards to decide whether to re-render.
+    Fingerprint del estado actual de datalake_gold/.
+    Detecta cambios en cualquier partición (nueva, modificada o eliminada)
+    para que los dashboards decidan si re-renderizar.
+    Recorre toda la estructura year=*/month=*/ en lugar de solo la raíz.
     """
-    files = sorted(glob.glob(os.path.join(GOLD_DIR, "*.parquet")))
+    pattern = os.path.join(GOLD_DIR, "**", "*.parquet")
+    files   = sorted(glob.glob(pattern, recursive=True))
     if not files:
         return "empty"
     return "|".join(
-        f"{os.path.basename(f)}:{os.path.getmtime(f)}" for f in files
+        f"{os.path.relpath(f, GOLD_DIR)}:{os.path.getmtime(f)}" for f in files
     )

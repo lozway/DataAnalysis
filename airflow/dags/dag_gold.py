@@ -75,41 +75,49 @@ def _get_spark(app_name: str):
     )
 
 
-def _save_parquet(rows: list, schema: pa.Schema, folder: str, filename: str) -> str:
+def _save_parquet(rows: list, schema: pa.Schema, base_folder: str, name: str) -> str:
     """
-    Append-with-dedup: si el archivo ya existe, lee el histórico,
-    concatena los nuevos registros y deduplica por (todas las columnas
-    excepto computed_at) + date(computed_at), preservando un snapshot
-    por run semanal. Si no existe, escribe directamente.
+    Particionamiento mensual + append-with-dedup.
+
+    Estructura de salida:
+        datalake_gold/<name>/year=YYYY/month=MM/<name>.parquet
+
+    Cada partición mensual acumula los runs semanales del mes.
+    La deduplicación elimina runs duplicados del mismo día pero preserva
+    snapshots de días distintos dentro del mismo mes.
+    Los meses anteriores nunca se tocan — solo se lee y escribe la partición
+    del mes corriente.
     """
     import pandas as pd
 
-    os.makedirs(folder, exist_ok=True)
-    filepath = os.path.join(folder, filename)
+    now        = datetime.utcnow()
+    year, month = now.year, now.month
 
-    # Construir DataFrame con los nuevos registros
+    partition_dir = os.path.join(base_folder, name, f"year={year}", f"month={month:02d}")
+    os.makedirs(partition_dir, exist_ok=True)
+    filepath = os.path.join(partition_dir, f"{name}.parquet")
+
     new_df = pd.DataFrame(rows, columns=[f.name for f in schema])
 
     if os.path.exists(filepath):
-        # Leer histórico existente
         existing_df = pq.read_table(filepath).to_pandas()
-        combined   = pd.concat([existing_df, new_df], ignore_index=True)
+        combined    = pd.concat([existing_df, new_df], ignore_index=True)
 
-        # Clave de dedup: todos los campos de dimensión + fecha del run
-        # Preserva un registro por (dimensión + día), elimina runs duplicados del mismo día
-        dim_cols  = [f.name for f in schema if f.name != "computed_at"]
-        combined["_date"] = pd.to_datetime(combined["computed_at"]).dt.date.astype(str)
-        dedup_key = dim_cols + ["_date"]
+        # Dedup: dimensiones + date(computed_at) — preserva un snapshot por día,
+        # elimina ejecuciones duplicadas del mismo día
+        dim_cols  = [f.name for f in schema if f.name not in ("computed_at", "ingest_date")]
+        combined["_dedup_date"] = pd.to_datetime(combined["computed_at"]).dt.date.astype(str)
+        dedup_key = dim_cols + ["_dedup_date"]
         combined  = combined.drop_duplicates(subset=dedup_key, keep="last")
-        combined  = combined.drop(columns=["_date"]).reset_index(drop=True)
+        combined  = combined.drop(columns=["_dedup_date"]).reset_index(drop=True)
 
-        print(f"   📚 Histórico: {len(existing_df)} + {len(new_df)} nuevos → {len(combined)} tras dedup")
+        print(f"   📚 {name} [{year}-{month:02d}]: {len(existing_df)} + {len(new_df)} → {len(combined)} tras dedup")
         df_to_write = combined
     else:
-        print(f"   🆕 Primer run — escribiendo {len(new_df)} registros")
+        print(f"   🆕 {name} [{year}-{month:02d}]: primera escritura — {len(new_df)} registros")
         df_to_write = new_df
 
-    # Castear tipos según schema antes de escribir
+    # Castear tipos según schema
     for field in schema:
         if field.name not in df_to_write.columns:
             continue
@@ -239,7 +247,7 @@ def gold_pipeline_dag():
 
         spark.stop()
 
-        path_out = _save_parquet(rows, GOVERNANCE_SCHEMA, GOLD_PATH, "governance_current.parquet")
+        path_out = _save_parquet(rows, GOVERNANCE_SCHEMA, GOLD_PATH, "governance")
         print(f"✅ Governance — {len(rows)} KPIs → {path_out}")
         return path_out
 
@@ -299,7 +307,7 @@ def gold_pipeline_dag():
             )
             for row in sent_dist:
                 rows.append(("sentiment_dist", row["sentiment"], "reddit",
-                            int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
+                             int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
                             round(row["avg_s"], 4), ingest_date_r, computed_at))
 
             # 2. Sentiment trend by ingestion date
@@ -322,7 +330,7 @@ def gold_pipeline_dag():
             )
             for row in ct_dist:
                 rows.append(("comment_type_dist", row["comment_type"], "reddit",
-                            int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
+                             int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
                             round(row["avg_conf"], 4), ingest_date_r, computed_at))
 
             # 4. Top 25 keywords (excluye stop-words)
@@ -350,7 +358,7 @@ def gold_pipeline_dag():
             for row in df_tokens:
                 rows.append(("top_keyword", row["kw"], "reddit",
                             int(row["cnt"]),
-                            round(row["cnt"] / total_kw * 100, 2) if total_kw else 0.0,
+                             round(row["cnt"] / total_kw * 100, 2) if total_kw else 0.0,
                             round(row["avg_s"], 4), ingest_date_r, computed_at))
 
             # 5. Volume trend (records por fecha)
@@ -381,7 +389,7 @@ def gold_pipeline_dag():
             total_ar = sum(r["cnt"] for r in artists_r) or 1
             for row in artists_r:
                 rows.append(("reddit_artist", row["artist"], "reddit",
-                            int(row["cnt"]), round(row["cnt"] / total_ar * 100, 2),
+                             int(row["cnt"]), round(row["cnt"] / total_ar * 100, 2),
                             round(row["avg_s"], 4), ingest_date_r, computed_at))
 
         # ════════════════════════════════════════════════════════════════
@@ -407,12 +415,12 @@ def gold_pipeline_dag():
                 totals_by_date[str(r["date"])] += r["listeners"]
 
             for row in daily_artists:
-                data_date_a = str(row["date"])
-                total_day   = totals_by_date[data_date_a] or 1
+                ingest_date_a = str(row["date"])
+                total_day   = totals_by_date[ingest_date_a] or 1
                 rows.append(("top_artist_lastfm", row["name"], "lastfm",
                             int(row["playcount"]),
-                            round(row["listeners"] / total_day * 100, 2),
-                            float(row["listeners"]), data_date_a, computed_at))
+                             round(row["listeners"] / total_day * 100, 2),
+                            float(row["listeners"]), ingest_date_a, computed_at))
 
             # Volume trend LastFM artists
             vol_a = (
@@ -447,12 +455,12 @@ def gold_pipeline_dag():
                 totals_tracks_by_date[str(r["date"])] += r["playcount"]
 
             for row in daily_tracks:
-                data_date_t = str(row["date"])
-                total_day   = totals_tracks_by_date[data_date_t] or 1
+                ingest_date_t = str(row["date"])
+                total_day   = totals_tracks_by_date[ingest_date_t] or 1
                 rows.append(("top_track_lastfm", row["name"], row["artist_name"],
                             int(row["playcount"]),
-                            round(row["playcount"] / total_day * 100, 2),
-                            float(row["listeners"]), data_date_t, computed_at))
+                             round(row["playcount"] / total_day * 100, 2),
+                            float(row["listeners"]), ingest_date_t, computed_at))
 
             # Volume trend LastFM tracks
             vol_t = (
@@ -468,7 +476,7 @@ def gold_pipeline_dag():
 
         spark.stop()
 
-        path_out = _save_parquet(rows, STORYTELLING_SCHEMA, GOLD_PATH, "storytelling_current.parquet")
+        path_out = _save_parquet(rows, STORYTELLING_SCHEMA, GOLD_PATH, "storytelling")
         print(f"✅ Storytelling — {len(rows)} filas → {path_out}")
         return path_out
 
