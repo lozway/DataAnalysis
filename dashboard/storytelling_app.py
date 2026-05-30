@@ -14,13 +14,14 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-from dash import Input, Output, dcc, html
+from dash import Input, Output, State, dcc, html
 
 from utils import (
     COLORS,
     SENTIMENT_COLORS,
     SOURCE_COLORS,
     SOURCE_LABELS,
+    gold_state_key,
     last_updated,
     load_storytelling,
 )
@@ -175,7 +176,9 @@ app.layout = dbc.Container(
             className="g-3 mb-4",
         ),
 
-        dcc.Interval(id="st-interval", interval=5 * 60 * 1000, n_intervals=0),
+        # Poll gold folder every 15 s; re-render only when files change
+        dcc.Interval(id="st-interval", interval=15 * 1000, n_intervals=0),
+        dcc.Store(id="st-file-state", data=""),
     ],
     fluid=True,
     style={"backgroundColor": COLORS["background"], "minHeight": "100vh", "padding": "0 24px 32px"},
@@ -193,10 +196,18 @@ app.layout = dbc.Container(
     Output("st-volume",         "figure"),
     Output("st-source-compare", "figure"),
     Output("st-last-updated",   "children"),
+    Output("st-file-state",     "data"),
     Input("st-interval",        "n_intervals"),
     Input("st-refresh-btn",     "n_clicks"),
+    State("st-file-state",      "data"),
 )
-def update_storytelling(_interval, _clicks):
+def update_storytelling(_interval, _clicks, stored_state):
+    current_state = gold_state_key()
+
+    # Skip re-render if the gold folder hasn't changed since last render
+    if dash.ctx.triggered_id == "st-interval" and current_state == stored_state:
+        return (dash.no_update,) * 9
+
     df = load_storytelling()
 
     def empty_fig(msg="No data"):
@@ -211,7 +222,7 @@ def update_storytelling(_interval, _clicks):
     if df.empty:
         alert = dbc.Alert("No storytelling data found. Run the gold_pipeline DAG first.", color="warning")
         ef = empty_fig("Run gold_pipeline DAG")
-        return alert, ef, ef, ef, ef, ef, ef, "N/A"
+        return alert, ef, ef, ef, ef, ef, ef, "N/A", current_state
 
     # ── Narrative card ────────────────────────────────────────────────────────
     sent = df[df["metric_type"] == "sentiment_dist"]
@@ -479,7 +490,7 @@ def update_storytelling(_interval, _clicks):
     return (
         narrative, fig_pie, fig_trend, fig_kw,
         fig_ct, fig_vol, fig_src,
-        f"Last updated: {last_updated(df)}",
+        f"Last updated: {last_updated(df)}", current_state,
     )
 
 

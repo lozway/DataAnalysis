@@ -92,3 +92,17 @@ def severity_color(value: float) -> str:
     if value <= 5:
         return COLORS["warn"]
     return COLORS["error"]
+
+
+def gold_state_key() -> str:
+    """
+    Returns a fingerprint of the datalake_gold/ folder state.
+    Changes when Parquet files are added, removed, or modified —
+    used by dashboards to decide whether to re-render.
+    """
+    files = sorted(glob.glob(os.path.join(GOLD_DIR, "*.parquet")))
+    if not files:
+        return "empty"
+    return "|".join(
+        f"{os.path.basename(f)}:{os.path.getmtime(f)}" for f in files
+    )

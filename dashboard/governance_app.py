@@ -14,12 +14,13 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-from dash import Input, Output, dash_table, dcc, html
+from dash import Input, Output, State, dash_table, dcc, html
 
 from utils import (
     COLORS,
     SOURCE_COLORS,
     SOURCE_LABELS,
+    gold_state_key,
     last_updated,
     load_governance,
     severity_color,
@@ -132,8 +133,9 @@ app.layout = dbc.Container(
             style={"borderRadius": "8px"},
         ),
 
-        # Auto-refresh every 5 minutes
-        dcc.Interval(id="gov-interval", interval=5 * 60 * 1000, n_intervals=0),
+        # Poll gold folder every 15 s; re-render only when files change
+        dcc.Interval(id="gov-interval", interval=15 * 1000, n_intervals=0),
+        dcc.Store(id="gov-file-state", data=""),
     ],
     fluid=True,
     style={"backgroundColor": COLORS["background"], "minHeight": "100vh", "padding": "0 24px 32px"},
@@ -150,10 +152,18 @@ app.layout = dbc.Container(
     Output("gov-textlen-chart", "figure"),
     Output("gov-kpi-table",     "children"),
     Output("gov-last-updated",  "children"),
+    Output("gov-file-state",    "data"),
     Input("gov-interval",       "n_intervals"),
     Input("gov-refresh-btn",    "n_clicks"),
+    State("gov-file-state",     "data"),
 )
-def update_governance(_interval, _clicks):
+def update_governance(_interval, _clicks, stored_state):
+    current_state = gold_state_key()
+
+    # Skip re-render if the gold folder hasn't changed since last render
+    # (always render on manual refresh or first load)
+    if dash.ctx.triggered_id == "gov-interval" and current_state == stored_state:
+        return (dash.no_update,) * 8
     df = load_governance()
 
     if df.empty:
@@ -162,7 +172,7 @@ def update_governance(_interval, _clicks):
                                  x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False)
         empty_fig.update_layout(plot_bgcolor="white", paper_bgcolor="white")
         alert = dbc.Alert("No governance data found. Run the gold_pipeline DAG first.", color="warning")
-        return [], empty_fig, empty_fig, empty_fig, empty_fig, alert, "N/A"
+        return [], empty_fig, empty_fig, empty_fig, empty_fig, alert, "N/A", current_state
 
     # ── KPI cards ─────────────────────────────────────────────────────────────
     def get_val(source, kpi, field="ALL"):
@@ -318,7 +328,7 @@ def update_governance(_interval, _clicks):
 
     return (
         kpi_cards, fig_null, fig_out, fig_vol, fig_tl,
-        table, f"Last updated: {last_updated(df)}",
+        table, f"Last updated: {last_updated(df)}", current_state,
     )
 
 
