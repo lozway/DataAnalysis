@@ -134,6 +134,7 @@ GOVERNANCE_SCHEMA = pa.schema([
     pa.field("kpi_type",    pa.string(),  nullable=False),
     pa.field("value",       pa.float64(), nullable=False),
     pa.field("unit",        pa.string(),  nullable=False),
+    pa.field("data_date",   pa.string(),  nullable=False),  # fecha más reciente de ingesta en silver
     pa.field("computed_at", pa.string(),  nullable=False),
 ])
 
@@ -144,6 +145,7 @@ STORYTELLING_SCHEMA = pa.schema([
     pa.field("record_count",pa.int64(),   nullable=False),
     pa.field("pct",         pa.float64(), nullable=False),
     pa.field("avg_score",   pa.float64(), nullable=False),
+    pa.field("data_date",   pa.string(),  nullable=False),  # fecha más reciente de ingesta en silver
     pa.field("computed_at", pa.string(),  nullable=False),
 ])
 
@@ -187,19 +189,22 @@ def gold_pipeline_dag():
             if total == 0:
                 continue
 
+            # Fecha más reciente de ingesta en silver para este source
+            data_date = df.agg(F.max("ingested_at")).collect()[0][0][:10]
+
             # KPI: volumen total
-            rows.append((source, "ALL", "volume", float(total), "count", computed_at))
+            rows.append((source, "ALL", "volume", float(total), "count", data_date, computed_at))
 
             # KPI: null_rate por campo
             for col in df.columns:
                 nulls = df.filter(F.col(col).isNull() | (F.col(col).cast("string") == "")).count()
-                rows.append((source, col, "null_rate", round(nulls / total * 100, 4), "percentage", computed_at))
+                rows.append((source, col, "null_rate", round(nulls / total * 100, 4), "percentage", data_date, computed_at))
 
             # KPI: schema_compliance (% filas donde todos los campos no son nulos)
             from functools import reduce
             non_null_filter = reduce(lambda a, b: a & b, [F.col(c).isNotNull() for c in df.columns])
             compliant = df.filter(non_null_filter).count()
-            rows.append((source, "ALL", "schema_compliance", round(compliant / total * 100, 4), "percentage", computed_at))
+            rows.append((source, "ALL", "schema_compliance", round(compliant / total * 100, 4), "percentage", data_date, computed_at))
 
             # KPI: outlier_rate en columnas numéricas (IQR)
             for col in num_cols:
@@ -208,11 +213,11 @@ def gold_pipeline_dag():
                 q1, q3 = df.stat.approxQuantile(col, [0.25, 0.75], 0.01)
                 iqr = q3 - q1
                 if iqr == 0:
-                    rows.append((source, col, "outlier_rate", 0.0, "percentage", computed_at))
+                    rows.append((source, col, "outlier_rate", 0.0, "percentage", data_date, computed_at))
                     continue
                 lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
                 outliers = df.filter((F.col(col) < lower) | (F.col(col) > upper)).count()
-                rows.append((source, col, "outlier_rate", round(outliers / total * 100, 4), "percentage", computed_at))
+                rows.append((source, col, "outlier_rate", round(outliers / total * 100, 4), "percentage", data_date, computed_at))
 
             # KPI: text_length stats en columnas de texto
             for col in text_cols:
@@ -226,11 +231,11 @@ def gold_pipeline_dag():
                 ).first()
                 for kpi_name, val in [("text_len_mean", stats["mean"]), ("text_len_median", stats["median"]),
                                        ("text_len_min", stats["min"]),   ("text_len_max", stats["max"])]:
-                    rows.append((source, col, kpi_name, float(val or 0), "characters", computed_at))
+                    rows.append((source, col, kpi_name, float(val or 0), "characters", data_date, computed_at))
 
             # KPI: ingestion_days — nro de fechas distintas de ingesta
             days = df.select(F.to_date(F.col("ingested_at")).alias("d")).distinct().count()
-            rows.append((source, "ingested_at", "ingestion_days", float(days), "days", computed_at))
+            rows.append((source, "ingested_at", "ingestion_days", float(days), "days", data_date, computed_at))
 
         spark.stop()
 
@@ -284,6 +289,7 @@ def gold_pipeline_dag():
             df_r = df_r.withColumn("sentiment", sentiment_label(F.col("clean_comment")))
             df_r = df_r.withColumn("score_sent", sentiment_score(F.col("clean_comment")))
             total_r = df_r.count()
+            data_date_r = df_r.agg(F.max("ingested_at")).collect()[0][0][:10]
 
             # 1. Sentiment distribution
             sent_dist = (
@@ -294,7 +300,7 @@ def gold_pipeline_dag():
             for row in sent_dist:
                 rows.append(("sentiment_dist", row["sentiment"], "reddit",
                              int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
-                             round(row["avg_s"], 4), computed_at))
+                             round(row["avg_s"], 4), data_date_r, computed_at))
 
             # 2. Sentiment trend by ingestion date
             trend = (
@@ -306,7 +312,7 @@ def gold_pipeline_dag():
             )
             for row in trend:
                 rows.append(("sentiment_trend", str(row["date"]), "reddit",
-                             int(row["cnt"]), 0.0, round(row["avg_s"], 4), computed_at))
+                             int(row["cnt"]), 0.0, round(row["avg_s"], 4), str(row["date"]), computed_at))
 
             # 3. Comment type distribution
             ct_dist = (
@@ -317,7 +323,7 @@ def gold_pipeline_dag():
             for row in ct_dist:
                 rows.append(("comment_type_dist", row["comment_type"], "reddit",
                              int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
-                             round(row["avg_conf"], 4), computed_at))
+                             round(row["avg_conf"], 4), data_date_r, computed_at))
 
             # 4. Top 25 keywords (excluye stop-words)
             stop_words_bc = spark.sparkContext.broadcast(STOP_WORDS)
@@ -345,7 +351,7 @@ def gold_pipeline_dag():
                 rows.append(("top_keyword", row["kw"], "reddit",
                              int(row["cnt"]),
                              round(row["cnt"] / total_kw * 100, 2) if total_kw else 0.0,
-                             round(row["avg_s"], 4), computed_at))
+                             round(row["avg_s"], 4), data_date_r, computed_at))
 
             # 5. Volume trend (records por fecha)
             vol = (
@@ -357,7 +363,7 @@ def gold_pipeline_dag():
             )
             for row in vol:
                 rows.append(("volume_trend", str(row["date"]), "reddit",
-                             int(row["count"]), 0.0, 0.0, computed_at))
+                             int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
 
             # 6. Top artistas mencionados en comentarios (campo artist)
             artists_r = (
@@ -376,29 +382,37 @@ def gold_pipeline_dag():
             for row in artists_r:
                 rows.append(("reddit_artist", row["artist"], "reddit",
                              int(row["cnt"]), round(row["cnt"] / total_ar * 100, 2),
-                             round(row["avg_s"], 4), computed_at))
+                             round(row["avg_s"], 4), data_date_r, computed_at))
 
         # ════════════════════════════════════════════════════════════════
         # LASTFM — Top Artists
         # ════════════════════════════════════════════════════════════════
         if glob_module.glob(os.path.join(SILVER_ARTISTS_PATH, "*.parquet")):
             df_a = spark.read.parquet(SILVER_ARTISTS_PATH)
-            top_artists = (
-                df_a.groupBy("name")
+            # Snapshot diario — groupBy name + date para análisis temporal
+            daily_artists = (
+                df_a.withColumn("date", F.to_date(F.col("ingested_at")))
+                    .groupBy("name", "date")
                     .agg(
                         F.max("listeners").alias("listeners"),
                         F.max("playcount").alias("playcount"),
                     )
-                    .orderBy(F.col("listeners").desc())
-                    .limit(20)
+                    .orderBy(F.col("date").asc(), F.col("listeners").desc())
                     .collect()
             )
-            total_listeners = sum(r["listeners"] for r in top_artists) or 1
-            for row in top_artists:
+            # Calcular pct dentro de cada día
+            from collections import defaultdict
+            totals_by_date = defaultdict(int)
+            for r in daily_artists:
+                totals_by_date[str(r["date"])] += r["listeners"]
+
+            for row in daily_artists:
+                data_date_a = str(row["date"])
+                total_day   = totals_by_date[data_date_a] or 1
                 rows.append(("top_artist_lastfm", row["name"], "lastfm",
                              int(row["playcount"]),
-                             round(row["listeners"] / total_listeners * 100, 2),
-                             float(row["listeners"]), computed_at))
+                             round(row["listeners"] / total_day * 100, 2),
+                             float(row["listeners"]), data_date_a, computed_at))
 
             # Volume trend LastFM artists
             vol_a = (
@@ -410,29 +424,35 @@ def gold_pipeline_dag():
             )
             for row in vol_a:
                 rows.append(("volume_trend", str(row["date"]), "lastfm_artists",
-                             int(row["count"]), 0.0, 0.0, computed_at))
+                             int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
 
         # ════════════════════════════════════════════════════════════════
         # LASTFM — Top Tracks
         # ════════════════════════════════════════════════════════════════
         if glob_module.glob(os.path.join(SILVER_TRACKS_PATH, "*.parquet")):
             df_t = spark.read.parquet(SILVER_TRACKS_PATH)
-            top_tracks = (
-                df_t.groupBy("name", "artist_name")
+            # Snapshot diario — groupBy name + artist_name + date para análisis temporal
+            daily_tracks = (
+                df_t.withColumn("date", F.to_date(F.col("ingested_at")))
+                    .groupBy("name", "artist_name", "date")
                     .agg(
                         F.max("playcount").alias("playcount"),
                         F.max("listeners").alias("listeners"),
                     )
-                    .orderBy(F.col("playcount").desc())
-                    .limit(20)
+                    .orderBy(F.col("date").asc(), F.col("playcount").desc())
                     .collect()
             )
-            total_plays = sum(r["playcount"] for r in top_tracks) or 1
-            for row in top_tracks:
+            totals_tracks_by_date = defaultdict(int)
+            for r in daily_tracks:
+                totals_tracks_by_date[str(r["date"])] += r["playcount"]
+
+            for row in daily_tracks:
+                data_date_t = str(row["date"])
+                total_day   = totals_tracks_by_date[data_date_t] or 1
                 rows.append(("top_track_lastfm", row["name"], row["artist_name"],
                              int(row["playcount"]),
-                             round(row["playcount"] / total_plays * 100, 2),
-                             float(row["listeners"]), computed_at))
+                             round(row["playcount"] / total_day * 100, 2),
+                             float(row["listeners"]), data_date_t, computed_at))
 
             # Volume trend LastFM tracks
             vol_t = (
@@ -444,7 +464,7 @@ def gold_pipeline_dag():
             )
             for row in vol_t:
                 rows.append(("volume_trend", str(row["date"]), "lastfm_tracks",
-                             int(row["count"]), 0.0, 0.0, computed_at))
+                             int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
 
         spark.stop()
 
