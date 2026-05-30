@@ -1,80 +1,80 @@
 metric_type,dim1,dim2,record_count,pct,avg_score,computed_at
-sentiment_dist,negative,reddit,32,14.04,-0.524,2026-05-30T01:18:01.381321
-sentiment_dist,positive,reddit,155,67.98,0.6207,2026-05-30T01:18:01.381321
-sentiment_dist,neutral,reddit,41,17.98,-0.0006,2026-05-30T01:18:01.381321
-sentiment_trend,2026-05-30,reddit,228,0.0,0.3483,2026-05-30T01:18:01.381321
-comment_type_dist,opinion,reddit,179,78.51,0.0201,2026-05-30T01:18:01.381321
-comment_type_dist,other,reddit,48,21.05,0.2167,2026-05-30T01:18:01.381321
-comment_type_dist,mixed,reddit,1,0.44,0.35,2026-05-30T01:18:01.381321
-top_keyword,album,reddit,57,10.12,0.5561,2026-05-30T01:18:01.381321
-top_keyword,music,reddit,41,7.28,0.7276,2026-05-30T01:18:01.381321
-top_keyword,good,reddit,29,5.15,0.4413,2026-05-30T01:18:01.381321
-top_keyword,links,reddit,28,4.97,0.7728,2026-05-30T01:18:01.381321
-top_keyword,bot,reddit,28,4.97,0.7728,2026-05-30T01:18:01.381321
-top_keyword,message,reddit,28,4.97,0.7728,2026-05-30T01:18:01.381321
-top_keyword,send,reddit,28,4.97,0.7728,2026-05-30T01:18:01.381321
-top_keyword,youtube,reddit,25,4.44,0.7649,2026-05-30T01:18:01.381321
-top_keyword,new,reddit,23,4.09,0.5014,2026-05-30T01:18:01.381321
-top_keyword,deezer,reddit,23,4.09,0.7819,2026-05-30T01:18:01.381321
-top_keyword,apple,reddit,22,3.91,0.7724,2026-05-30T01:18:01.381321
-top_keyword,great,reddit,21,3.73,0.8124,2026-05-30T01:18:01.381321
-top_keyword,spotify,reddit,20,3.55,0.78,2026-05-30T01:18:01.381321
-top_keyword,it's,reddit,19,3.37,0.3978,2026-05-30T01:18:01.381321
-top_keyword,soundcloud,reddit,18,3.2,0.7774,2026-05-30T01:18:01.381321
-top_keyword,last,reddit,17,3.02,0.6337,2026-05-30T01:18:01.381321
-top_keyword,top,reddit,16,2.84,0.7494,2026-05-30T01:18:01.381321
-top_keyword,years,reddit,16,2.84,0.4577,2026-05-30T01:18:01.381321
-top_keyword,fresh,reddit,16,2.84,0.7147,2026-05-30T01:18:01.381321
-top_keyword,them,reddit,15,2.66,0.4468,2026-05-30T01:18:01.381321
-top_keyword,love,reddit,15,2.66,0.7001,2026-05-30T01:18:01.381321
-top_keyword,these,reddit,15,2.66,0.4627,2026-05-30T01:18:01.381321
-top_keyword,songs,reddit,15,2.66,0.4535,2026-05-30T01:18:01.381321
-top_keyword,bandcamp,reddit,14,2.49,0.7728,2026-05-30T01:18:01.381321
-top_keyword,'hiphopheads',reddit,14,2.49,0.7728,2026-05-30T01:18:01.381321
-volume_trend,2026-05-30,reddit,228,0.0,0.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Coldplay,lastfm,785683164,5.7,9157091.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Coldplay,lastfm,785683164,5.7,9157091.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Coldplay,lastfm,785537565,5.7,9155733.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Rihanna,lastfm,611077077,5.2,8352047.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Rihanna,lastfm,611077077,5.2,8352047.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Rihanna,lastfm,610806883,5.2,8350772.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Radiohead,lastfm,1390035608,5.16,8289261.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Radiohead,lastfm,1390035608,5.16,8289261.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Radiohead,lastfm,1389546781,5.16,8287544.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Kanye West,lastfm,1562471025,4.98,7996823.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Kanye West,lastfm,1562471025,4.98,7996823.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Kanye West,lastfm,1561865290,4.98,7995538.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Lady Gaga,lastfm,1045879765,4.84,7774240.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Lady Gaga,lastfm,1045879765,4.84,7774240.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Lady Gaga,lastfm,1045518366,4.84,7772676.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Katy Perry,lastfm,446713481,4.49,7214107.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Katy Perry,lastfm,446713481,4.49,7214107.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Katy Perry,lastfm,446490300,4.49,7212041.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Arctic Monkeys,lastfm,944403543,4.45,7152552.0,2026-05-30T01:18:01.381321
-top_artist_lastfm,Arctic Monkeys,lastfm,944403543,4.45,7152552.0,2026-05-30T01:18:01.381321
-volume_trend,2026-05-28,lastfm_artists,50,0.0,0.0,2026-05-30T01:18:01.381321
-volume_trend,2026-05-29,lastfm_artists,50,0.0,0.0,2026-05-30T01:18:01.381321
-volume_trend,2026-05-30,lastfm_artists,50,0.0,0.0,2026-05-30T01:18:01.381321
-top_track_lastfm,SWIM,BTS,201114878,12.48,458121.0,2026-05-30T01:18:01.381321
-top_track_lastfm,SWIM,BTS,201114878,12.48,458121.0,2026-05-30T01:18:01.381321
-top_track_lastfm,SWIM,BTS,198661735,12.33,456991.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Creep,Radiohead,61277532,3.8,4116166.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Creep,Radiohead,61277532,3.8,4116166.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Creep,Radiohead,61244353,3.8,4114888.0,2026-05-30T01:18:01.381321
-top_track_lastfm,"Good Luck, Babe!",Chappell Roan,60669563,3.77,2101309.0,2026-05-30T01:18:01.381321
-top_track_lastfm,"Good Luck, Babe!",Chappell Roan,60669563,3.77,2101309.0,2026-05-30T01:18:01.381321
-top_track_lastfm,"Good Luck, Babe!",Chappell Roan,60643840,3.76,2100652.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Pink + White,Frank Ocean,59967623,3.72,2463130.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Pink + White,Frank Ocean,59967623,3.72,2463130.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Pink + White,Frank Ocean,59944740,3.72,2462316.0,2026-05-30T01:18:01.381321
-top_track_lastfm,505,Arctic Monkeys,58832885,3.65,3051965.0,2026-05-30T01:18:01.381321
-top_track_lastfm,505,Arctic Monkeys,58832885,3.65,3051965.0,2026-05-30T01:18:01.381321
-top_track_lastfm,505,Arctic Monkeys,58803216,3.65,3050877.0,2026-05-30T01:18:01.381321
-top_track_lastfm,See You Again (feat. Kali Uchis),"Tyler, The Creator",58314231,3.62,2583916.0,2026-05-30T01:18:01.381321
-top_track_lastfm,See You Again (feat. Kali Uchis),"Tyler, The Creator",58314231,3.62,2583916.0,2026-05-30T01:18:01.381321
-top_track_lastfm,See You Again (feat. Kali Uchis),"Tyler, The Creator",58283364,3.62,2582928.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Body to Body,BTS,56621255,3.51,404369.0,2026-05-30T01:18:01.381321
-top_track_lastfm,Body to Body,BTS,56621255,3.51,404369.0,2026-05-30T01:18:01.381321
-volume_trend,2026-05-28,lastfm_tracks,50,0.0,0.0,2026-05-30T01:18:01.381321
-volume_trend,2026-05-29,lastfm_tracks,51,0.0,0.0,2026-05-30T01:18:01.381321
-volume_trend,2026-05-30,lastfm_tracks,50,0.0,0.0,2026-05-30T01:18:01.381321
+sentiment_dist,negative,reddit,32,14.04,-0.524,2026-05-30T02:09:42.227013
+sentiment_dist,positive,reddit,155,67.98,0.6207,2026-05-30T02:09:42.227013
+sentiment_dist,neutral,reddit,41,17.98,-0.0006,2026-05-30T02:09:42.227013
+sentiment_trend,2026-05-30,reddit,228,0.0,0.3483,2026-05-30T02:09:42.227013
+comment_type_dist,opinion,reddit,179,78.51,0.0201,2026-05-30T02:09:42.227013
+comment_type_dist,other,reddit,48,21.05,0.2167,2026-05-30T02:09:42.227013
+comment_type_dist,mixed,reddit,1,0.44,0.35,2026-05-30T02:09:42.227013
+top_keyword,album,reddit,57,11.88,0.5561,2026-05-30T02:09:42.227013
+top_keyword,music,reddit,41,8.54,0.7276,2026-05-30T02:09:42.227013
+top_keyword,good,reddit,29,6.04,0.4413,2026-05-30T02:09:42.227013
+top_keyword,new,reddit,23,4.79,0.5014,2026-05-30T02:09:42.227013
+top_keyword,apple,reddit,22,4.58,0.7724,2026-05-30T02:09:42.227013
+top_keyword,great,reddit,21,4.38,0.8124,2026-05-30T02:09:42.227013
+top_keyword,it's,reddit,19,3.96,0.3978,2026-05-30T02:09:42.227013
+top_keyword,soundcloud,reddit,18,3.75,0.7774,2026-05-30T02:09:42.227013
+top_keyword,last,reddit,17,3.54,0.6337,2026-05-30T02:09:42.227013
+top_keyword,years,reddit,16,3.33,0.4577,2026-05-30T02:09:42.227013
+top_keyword,top,reddit,16,3.33,0.7494,2026-05-30T02:09:42.227013
+top_keyword,fresh,reddit,16,3.33,0.7147,2026-05-30T02:09:42.227013
+top_keyword,love,reddit,15,3.12,0.7001,2026-05-30T02:09:42.227013
+top_keyword,them,reddit,15,3.12,0.4468,2026-05-30T02:09:42.227013
+top_keyword,these,reddit,15,3.12,0.4627,2026-05-30T02:09:42.227013
+top_keyword,qobuz,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,recap,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,bandcamp,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,you'd,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,posts,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,feedback,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,'hiphopheads',reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,/r/hiphopheads,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+top_keyword,i'm,reddit,14,2.92,0.1392,2026-05-30T02:09:42.227013
+top_keyword,alternative,reddit,14,2.92,0.7728,2026-05-30T02:09:42.227013
+volume_trend,2026-05-30,reddit,228,0.0,0.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Coldplay,lastfm,785683164,6.81,9157091.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Rihanna,lastfm,611077077,6.21,8352047.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Radiohead,lastfm,1390035608,6.16,8289261.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Kanye West,lastfm,1562471025,5.95,7996823.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Lady Gaga,lastfm,1045879765,5.78,7774240.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Katy Perry,lastfm,446713481,5.36,7214107.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Arctic Monkeys,lastfm,944403543,5.32,7152552.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Michael Jackson,lastfm,383850965,5.2,6988943.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Linkin Park,lastfm,755245384,5.19,6983290.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Gorillaz,lastfm,525220112,5.14,6907878.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Drake,lastfm,1209819412,5.04,6785497.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,The Beatles,lastfm,1112521763,4.87,6554162.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Beyoncé,lastfm,707170351,4.78,6428520.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Taylor Swift,lastfm,3712355647,4.45,5984147.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Paramore,lastfm,593914027,4.23,5694285.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,The Weeknd,lastfm,1138913817,3.99,5367706.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Lana Del Rey,lastfm,1598705524,3.94,5304138.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Bruno Mars,lastfm,310592889,3.94,5303331.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,Kendrick Lamar,lastfm,1043011656,3.82,5141708.0,2026-05-30T02:09:42.227013
+top_artist_lastfm,The Smiths,lastfm,546559672,3.81,5119721.0,2026-05-30T02:09:42.227013
+volume_trend,2026-05-28,lastfm_artists,50,0.0,0.0,2026-05-30T02:09:42.227013
+volume_trend,2026-05-29,lastfm_artists,50,0.0,0.0,2026-05-30T02:09:42.227013
+volume_trend,2026-05-30,lastfm_artists,50,0.0,0.0,2026-05-30T02:09:42.227013
+top_track_lastfm,SWIM,BTS,201114878,16.64,458121.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Creep,Radiohead,61277532,5.07,4116166.0,2026-05-30T02:09:42.227013
+top_track_lastfm,"Good Luck, Babe!",Chappell Roan,60669563,5.02,2101309.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Pink + White,Frank Ocean,59967623,4.96,2463130.0,2026-05-30T02:09:42.227013
+top_track_lastfm,505,Arctic Monkeys,58832885,4.87,3051965.0,2026-05-30T02:09:42.227013
+top_track_lastfm,See You Again (feat. Kali Uchis),"Tyler, The Creator",58314231,4.83,2583916.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Body to Body,BTS,56621255,4.69,404369.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Hooligan,BTS,54500731,4.51,380266.0,2026-05-30T02:09:42.227013
+top_track_lastfm,2.0,BTS,53947100,4.46,350546.0,2026-05-30T02:09:42.227013
+top_track_lastfm,NORMAL,BTS,52943866,4.38,323927.0,2026-05-30T02:09:42.227013
+top_track_lastfm,FYA,BTS,52104265,4.31,356353.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Aliens,BTS,51914367,4.3,338066.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Mr. Brightside,The Killers,51904270,4.29,3712680.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Lovers Rock,TV Girl,51002954,4.22,2203089.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Sweater Weather,The Neighbourhood,50781296,4.2,2997643.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Like Animals,BTS,50703788,4.2,321398.0,2026-05-30T02:09:42.227013
+top_track_lastfm,they don’t know ’bout us,BTS,49474839,4.09,322916.0,2026-05-30T02:09:42.227013
+top_track_lastfm,The Less I Know the Better,Tame Impala,49414706,4.09,2809754.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Duvet,bôa,41629981,3.44,2020485.0,2026-05-30T02:09:42.227013
+top_track_lastfm,Let Down,Radiohead,41415693,3.43,2542515.0,2026-05-30T02:09:42.227013
+volume_trend,2026-05-28,lastfm_tracks,50,0.0,0.0,2026-05-30T02:09:42.227013
+volume_trend,2026-05-29,lastfm_tracks,51,0.0,0.0,2026-05-30T02:09:42.227013
+volume_trend,2026-05-30,lastfm_tracks,50,0.0,0.0,2026-05-30T02:09:42.227013
