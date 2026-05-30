@@ -81,16 +81,9 @@ Reddit comment type breakdown: **78.5% opinions**, 21.1% other, 0.4% mixed, **0%
 
 ```
 workshop_3/
-├── WORKSHOP3_Music_Artists_Albums.tex   # Full technical report (LaTeX)
-├── imagenes/                            # Report assets
+├── WORKSHOP3_Music_Artists_Albums.pdf
 └── README.md
 ```
-
----
-
-## Main Deliverable
-
-[**Workshop 3 Report (LaTeX)**](./WORKSHOP3_Music_Artists_Albums.tex) — Full technical report covering all pipeline improvements, data quality findings, governance KPI definitions with justification, storytelling aggregations with user story mapping, PySpark implementation details and results evidence.
 
 ---
 
