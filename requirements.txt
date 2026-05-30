@@ -5,7 +5,7 @@ dash-bootstrap-components>=1.5.0
 
 # Data
 pandas>=2.0.0
-pyarrow>=18.0.0
+pyarrow>=16.1.0
 
 # Scraping (Workshop 1)
 requests>=2.32.5
