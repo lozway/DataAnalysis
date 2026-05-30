@@ -75,62 +75,91 @@ def _get_spark(app_name: str):
     )
 
 
-def _save_parquet(rows: list, schema: pa.Schema, base_folder: str, name: str) -> str:
+def _cast_df(df: "pd.DataFrame", schema: pa.Schema) -> "pd.DataFrame":
+    """Castea tipos del DataFrame según el schema PyArrow."""
+    for field in schema:
+        if field.name not in df.columns:
+            continue
+        if pa.types.is_integer(field.type):
+            df[field.name] = df[field.name].astype("int64")
+        elif pa.types.is_floating(field.type):
+            df[field.name] = df[field.name].astype("float64")
+        elif pa.types.is_string(field.type):
+            df[field.name] = df[field.name].astype("string")
+    return df
+
+
+def _write_partition(df: "pd.DataFrame", schema: pa.Schema,
+                     base_folder: str, name: str, year: int, month: int) -> str:
     """
-    Particionamiento mensual + append-with-dedup.
-
-    Estructura de salida:
-        datalake_gold/<name>/year=YYYY/month=MM/<name>.parquet
-
-    Cada partición mensual acumula los runs semanales del mes.
-    La deduplicación elimina runs duplicados del mismo día pero preserva
-    snapshots de días distintos dentro del mismo mes.
-    Los meses anteriores nunca se tocan — solo se lee y escribe la partición
-    del mes corriente.
+    Append-with-dedup sobre una única partición mensual.
+    La clave de dedup usa ingest_date (fecha del dato) + dimensiones,
+    eliminando solo runs duplicados del mismo día.
     """
     import pandas as pd
-
-    now        = datetime.utcnow()
-    year, month = now.year, now.month
 
     partition_dir = os.path.join(base_folder, name, f"year={year}", f"month={month:02d}")
     os.makedirs(partition_dir, exist_ok=True)
     filepath = os.path.join(partition_dir, f"{name}.parquet")
 
-    new_df = pd.DataFrame(rows, columns=[f.name for f in schema])
-
     if os.path.exists(filepath):
         existing_df = pq.read_table(filepath).to_pandas()
-        combined    = pd.concat([existing_df, new_df], ignore_index=True)
+        combined    = pd.concat([existing_df, df], ignore_index=True)
 
-        # Dedup: dimensiones + date(computed_at) — preserva un snapshot por día,
+        # Dedup por dimensiones + ingest_date — preserva un snapshot por día de dato,
         # elimina ejecuciones duplicadas del mismo día
         dim_cols  = [f.name for f in schema if f.name not in ("computed_at", "ingest_date")]
-        combined["_dedup_date"] = pd.to_datetime(combined["computed_at"]).dt.date.astype(str)
-        dedup_key = dim_cols + ["_dedup_date"]
+        dedup_key = dim_cols + ["ingest_date"]
         combined  = combined.drop_duplicates(subset=dedup_key, keep="last")
-        combined  = combined.drop(columns=["_dedup_date"]).reset_index(drop=True)
+        combined  = combined.reset_index(drop=True)
 
-        print(f"   📚 {name} [{year}-{month:02d}]: {len(existing_df)} + {len(new_df)} → {len(combined)} tras dedup")
+        print(f"   📚 {name} [{year}-{month:02d}]: {len(existing_df)} + {len(df)} → {len(combined)} tras dedup")
         df_to_write = combined
     else:
-        print(f"   🆕 {name} [{year}-{month:02d}]: primera escritura — {len(new_df)} registros")
-        df_to_write = new_df
+        print(f"   🆕 {name} [{year}-{month:02d}]: primera escritura — {len(df)} registros")
+        df_to_write = df
 
-    # Castear tipos según schema
-    for field in schema:
-        if field.name not in df_to_write.columns:
-            continue
-        if pa.types.is_integer(field.type):
-            df_to_write[field.name] = df_to_write[field.name].astype("int64")
-        elif pa.types.is_floating(field.type):
-            df_to_write[field.name] = df_to_write[field.name].astype("float64")
-        elif pa.types.is_string(field.type):
-            df_to_write[field.name] = df_to_write[field.name].astype("string")
-
+    df_to_write = _cast_df(df_to_write, schema)
     table = pa.Table.from_pandas(df_to_write, schema=schema, preserve_index=False)
     pq.write_table(table, filepath, compression="snappy")
     return filepath
+
+
+def _save_parquet(rows: list, schema: pa.Schema, base_folder: str, name: str) -> str:
+    """
+    Particionamiento mensual guiado por ingest_date del dato (no por computed_at).
+
+    Estructura de salida:
+        datalake_gold/<name>/year=YYYY/month=MM/<name>.parquet
+
+    Cada row se enruta a la partición correspondiente a su ingest_date,
+    garantizando que datos del 31 de mayo van a month=05 y datos del
+    1 de junio van a month=06, independientemente de cuándo corra gold.
+    Dentro de cada partición se aplica append-with-dedup por (dimensiones + ingest_date).
+    """
+    import pandas as pd
+    from collections import defaultdict
+
+    new_df = pd.DataFrame(rows, columns=[f.name for f in schema])
+
+    # Determinar la partición correcta de cada row según su ingest_date
+    # ingest_date tiene formato "YYYY-MM-DD"
+    if "ingest_date" in new_df.columns:
+        new_df["_year"]  = pd.to_datetime(new_df["ingest_date"]).dt.year
+        new_df["_month"] = pd.to_datetime(new_df["ingest_date"]).dt.month
+    else:
+        # Fallback: usar computed_at si ingest_date no está disponible
+        now = datetime.utcnow()
+        new_df["_year"]  = now.year
+        new_df["_month"] = now.month
+
+    # Agrupar rows por partición y escribir cada grupo
+    last_path = ""
+    for (year, month), group in new_df.groupby(["_year", "_month"]):
+        group = group.drop(columns=["_year", "_month"]).reset_index(drop=True)
+        last_path = _write_partition(group, schema, base_folder, name, int(year), int(month))
+
+    return last_path
 
 
 # ──────────────────────────────────────────────
@@ -142,7 +171,7 @@ GOVERNANCE_SCHEMA = pa.schema([
     pa.field("kpi_type",    pa.string(),  nullable=False),
     pa.field("value",       pa.float64(), nullable=False),
     pa.field("unit",        pa.string(),  nullable=False),
-    pa.field("ingest_date",   pa.string(),  nullable=False),  # fecha más reciente de ingesta en silver
+    pa.field("data_date",   pa.string(),  nullable=False),  # fecha más reciente de ingesta en silver
     pa.field("computed_at", pa.string(),  nullable=False),
 ])
 
@@ -153,7 +182,7 @@ STORYTELLING_SCHEMA = pa.schema([
     pa.field("record_count",pa.int64(),   nullable=False),
     pa.field("pct",         pa.float64(), nullable=False),
     pa.field("avg_score",   pa.float64(), nullable=False),
-    pa.field("ingest_date",   pa.string(),  nullable=False),  # fecha más reciente de ingesta en silver
+    pa.field("data_date",   pa.string(),  nullable=False),  # fecha más reciente de ingesta en silver
     pa.field("computed_at", pa.string(),  nullable=False),
 ])
 
@@ -198,21 +227,21 @@ def gold_pipeline_dag():
                 continue
 
             # Fecha más reciente de ingesta en silver para este source
-            ingest_date = df.agg(F.max("ingested_at")).collect()[0][0][:10]
+            data_date = df.agg(F.max("ingested_at")).collect()[0][0][:10]
 
             # KPI: volumen total
-            rows.append((source, "ALL", "volume", float(total), "count", ingest_date, computed_at))
+            rows.append((source, "ALL", "volume", float(total), "count", data_date, computed_at))
 
             # KPI: null_rate por campo
             for col in df.columns:
                 nulls = df.filter(F.col(col).isNull() | (F.col(col).cast("string") == "")).count()
-                rows.append((source, col, "null_rate", round(nulls / total * 100, 4), "percentage", ingest_date, computed_at))
+                rows.append((source, col, "null_rate", round(nulls / total * 100, 4), "percentage", data_date, computed_at))
 
             # KPI: schema_compliance (% filas donde todos los campos no son nulos)
             from functools import reduce
             non_null_filter = reduce(lambda a, b: a & b, [F.col(c).isNotNull() for c in df.columns])
             compliant = df.filter(non_null_filter).count()
-            rows.append((source, "ALL", "schema_compliance", round(compliant / total * 100, 4), "percentage", ingest_date, computed_at))
+            rows.append((source, "ALL", "schema_compliance", round(compliant / total * 100, 4), "percentage", data_date, computed_at))
 
             # KPI: outlier_rate en columnas numéricas (IQR)
             for col in num_cols:
@@ -221,11 +250,11 @@ def gold_pipeline_dag():
                 q1, q3 = df.stat.approxQuantile(col, [0.25, 0.75], 0.01)
                 iqr = q3 - q1
                 if iqr == 0:
-                    rows.append((source, col, "outlier_rate", 0.0, "percentage", ingest_date, computed_at))
+                    rows.append((source, col, "outlier_rate", 0.0, "percentage", data_date, computed_at))
                     continue
                 lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
                 outliers = df.filter((F.col(col) < lower) | (F.col(col) > upper)).count()
-                rows.append((source, col, "outlier_rate", round(outliers / total * 100, 4), "percentage", ingest_date, computed_at))
+                rows.append((source, col, "outlier_rate", round(outliers / total * 100, 4), "percentage", data_date, computed_at))
 
             # KPI: text_length stats en columnas de texto
             for col in text_cols:
@@ -238,12 +267,12 @@ def gold_pipeline_dag():
                     F.max(F.length(F.col(col))).alias("max"),
                 ).first()
                 for kpi_name, val in [("text_len_mean", stats["mean"]), ("text_len_median", stats["median"]),
-                                    ("text_len_min", stats["min"]),   ("text_len_max", stats["max"])]:
-                    rows.append((source, col, kpi_name, float(val or 0), "characters", ingest_date, computed_at))
+                                       ("text_len_min", stats["min"]),   ("text_len_max", stats["max"])]:
+                    rows.append((source, col, kpi_name, float(val or 0), "characters", data_date, computed_at))
 
             # KPI: ingestion_days — nro de fechas distintas de ingesta
             days = df.select(F.to_date(F.col("ingested_at")).alias("d")).distinct().count()
-            rows.append((source, "ingested_at", "ingestion_days", float(days), "days", ingest_date, computed_at))
+            rows.append((source, "ingested_at", "ingestion_days", float(days), "days", data_date, computed_at))
 
         spark.stop()
 
@@ -297,7 +326,7 @@ def gold_pipeline_dag():
             df_r = df_r.withColumn("sentiment", sentiment_label(F.col("clean_comment")))
             df_r = df_r.withColumn("score_sent", sentiment_score(F.col("clean_comment")))
             total_r = df_r.count()
-            ingest_date_r = df_r.agg(F.max("ingested_at")).collect()[0][0][:10]
+            data_date_r = df_r.agg(F.max("ingested_at")).collect()[0][0][:10]
 
             # 1. Sentiment distribution
             sent_dist = (
@@ -308,7 +337,7 @@ def gold_pipeline_dag():
             for row in sent_dist:
                 rows.append(("sentiment_dist", row["sentiment"], "reddit",
                              int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
-                            round(row["avg_s"], 4), ingest_date_r, computed_at))
+                             round(row["avg_s"], 4), data_date_r, computed_at))
 
             # 2. Sentiment trend by ingestion date
             trend = (
@@ -320,7 +349,7 @@ def gold_pipeline_dag():
             )
             for row in trend:
                 rows.append(("sentiment_trend", str(row["date"]), "reddit",
-                            int(row["cnt"]), 0.0, round(row["avg_s"], 4), str(row["date"]), computed_at))
+                             int(row["cnt"]), 0.0, round(row["avg_s"], 4), str(row["date"]), computed_at))
 
             # 3. Comment type distribution
             ct_dist = (
@@ -331,7 +360,7 @@ def gold_pipeline_dag():
             for row in ct_dist:
                 rows.append(("comment_type_dist", row["comment_type"], "reddit",
                              int(row["cnt"]), round(row["cnt"] / total_r * 100, 2),
-                            round(row["avg_conf"], 4), ingest_date_r, computed_at))
+                             round(row["avg_conf"], 4), data_date_r, computed_at))
 
             # 4. Top 25 keywords (excluye stop-words)
             stop_words_bc = spark.sparkContext.broadcast(STOP_WORDS)
@@ -357,9 +386,9 @@ def gold_pipeline_dag():
             total_kw = sum(r["cnt"] for r in df_tokens)
             for row in df_tokens:
                 rows.append(("top_keyword", row["kw"], "reddit",
-                            int(row["cnt"]),
+                             int(row["cnt"]),
                              round(row["cnt"] / total_kw * 100, 2) if total_kw else 0.0,
-                            round(row["avg_s"], 4), ingest_date_r, computed_at))
+                             round(row["avg_s"], 4), data_date_r, computed_at))
 
             # 5. Volume trend (records por fecha)
             vol = (
@@ -371,7 +400,7 @@ def gold_pipeline_dag():
             )
             for row in vol:
                 rows.append(("volume_trend", str(row["date"]), "reddit",
-                            int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
+                             int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
 
             # 6. Top artistas mencionados en comentarios (campo artist)
             artists_r = (
@@ -390,7 +419,7 @@ def gold_pipeline_dag():
             for row in artists_r:
                 rows.append(("reddit_artist", row["artist"], "reddit",
                              int(row["cnt"]), round(row["cnt"] / total_ar * 100, 2),
-                            round(row["avg_s"], 4), ingest_date_r, computed_at))
+                             round(row["avg_s"], 4), data_date_r, computed_at))
 
         # ════════════════════════════════════════════════════════════════
         # LASTFM — Top Artists
@@ -415,12 +444,12 @@ def gold_pipeline_dag():
                 totals_by_date[str(r["date"])] += r["listeners"]
 
             for row in daily_artists:
-                ingest_date_a = str(row["date"])
-                total_day   = totals_by_date[ingest_date_a] or 1
+                data_date_a = str(row["date"])
+                total_day   = totals_by_date[data_date_a] or 1
                 rows.append(("top_artist_lastfm", row["name"], "lastfm",
-                            int(row["playcount"]),
+                             int(row["playcount"]),
                              round(row["listeners"] / total_day * 100, 2),
-                            float(row["listeners"]), ingest_date_a, computed_at))
+                             float(row["listeners"]), data_date_a, computed_at))
 
             # Volume trend LastFM artists
             vol_a = (
@@ -432,7 +461,7 @@ def gold_pipeline_dag():
             )
             for row in vol_a:
                 rows.append(("volume_trend", str(row["date"]), "lastfm_artists",
-                            int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
+                             int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
 
         # ════════════════════════════════════════════════════════════════
         # LASTFM — Top Tracks
@@ -455,12 +484,12 @@ def gold_pipeline_dag():
                 totals_tracks_by_date[str(r["date"])] += r["playcount"]
 
             for row in daily_tracks:
-                ingest_date_t = str(row["date"])
-                total_day   = totals_tracks_by_date[ingest_date_t] or 1
+                data_date_t = str(row["date"])
+                total_day   = totals_tracks_by_date[data_date_t] or 1
                 rows.append(("top_track_lastfm", row["name"], row["artist_name"],
-                            int(row["playcount"]),
+                             int(row["playcount"]),
                              round(row["playcount"] / total_day * 100, 2),
-                            float(row["listeners"]), ingest_date_t, computed_at))
+                             float(row["listeners"]), data_date_t, computed_at))
 
             # Volume trend LastFM tracks
             vol_t = (
@@ -472,7 +501,7 @@ def gold_pipeline_dag():
             )
             for row in vol_t:
                 rows.append(("volume_trend", str(row["date"]), "lastfm_tracks",
-                            int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
+                             int(row["count"]), 0.0, 0.0, str(row["date"]), computed_at))
 
         spark.stop()
 
