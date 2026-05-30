@@ -1,0 +1,12 @@
+# Dashboard
+dash>=2.14.0
+plotly>=5.18.0
+dash-bootstrap-components>=1.5.0
+
+# Data
+pandas>=2.0.0
+pyarrow>=18.0.0
+
+# Scraping (Workshop 1)
+requests>=2.32.5
+beautifulsoup4>=4.14.3

@@ -101,5 +101,37 @@ services:
         condition: service_completed_successfully
     restart: always
 
+  # ─────────────────────────────────────────────
+  # Governance Dashboard — http://localhost:8050
+  # ─────────────────────────────────────────────
+  governance-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    command: python /app/dashboard/governance_app.py
+    volumes:
+      - ./dashboard:/app/dashboard
+      - ./datalake_gold:/app/datalake_gold
+      - ./notebooks:/app/notebooks
+    ports:
+      - "8050:8050"
+    restart: always
+
+  # ─────────────────────────────────────────────
+  # Storytelling Dashboard — http://localhost:8051
+  # ─────────────────────────────────────────────
+  storytelling-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    command: python /app/dashboard/storytelling_app.py
+    volumes:
+      - ./dashboard:/app/dashboard
+      - ./datalake_gold:/app/datalake_gold
+      - ./notebooks:/app/notebooks
+    ports:
+      - "8051:8051"
+    restart: always
+
 volumes:
   postgres_data:
