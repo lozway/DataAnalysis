@@ -1,26 +1,25 @@
 version: "3.8"
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.8.1
+  build: .                        # imagen custom con Java + PySpark + VADER
   env_file:
     - .env
   environment:
-    # Airflow core
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__FERNET_KEY: ""
-    # Use PostgreSQL for Airflow metadata
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${AIRFLOW_DB}
-    # Connection for the EarthShake application database (used by DAGs)
-    # Scheme must be 'postgres' (Airflow hook type), not 'postgresql+psycopg2' (SQLAlchemy)
     AIRFLOW_CONN_POSTGRES_ES: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${ES_DB}
-    # Webserver
     AIRFLOW__WEBSERVER__SECRET_KEY: "nasa-es-etl-secret-key"
+    # PySpark memory settings passed as env vars (readable inside tasks)
+    SPARK_DRIVER_MEMORY: "1g"
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/sql:/opt/airflow/sql
     - ./datalake:/opt/airflow/datalake
-    - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ movido al anchor común
+    - ./datalake_bronze:/opt/airflow/datalake_bronze
+    - ./datalake_silver:/opt/airflow/datalake_silver
+    - ./datalake_gold:/opt/airflow/datalake_gold
   depends_on:
     postgres:
       condition: service_healthy
@@ -39,7 +38,6 @@ services:
       POSTGRES_DB: ${AIRFLOW_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Init script creates the es_db alongside the airflow DB
       - ./airflow/sql/init_es_db.sql:/docker-entrypoint-initdb.d/init_es_db.sql
     ports:
       - "5432:5432"
@@ -49,7 +47,7 @@ services:
       retries: 10
 
   # ─────────────────────────────────────────────
-  # Airflow Init — one-shot: migrate DB + create admin user
+  # Airflow Init — one-shot: migrate DB + create admin user + fs_default conn
   # ─────────────────────────────────────────────
   airflow-init:
     <<: *airflow-common
@@ -68,14 +66,7 @@ services:
         airflow connections add fs_default \
           --conn-type fs \
           --conn-extra '{"path": "/"}' || true
-
     working_dir: /opt/airflow
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/sql:/opt/airflow/sql
-      - ./datalake:/opt/airflow/datalake
-      - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ agregado
-      - ./pyproject.toml:/opt/airflow/pyproject.toml
     restart: "no"
 
   # ─────────────────────────────────────────────
@@ -86,12 +77,6 @@ services:
     command: airflow webserver
     ports:
       - "8080:8080"
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/sql:/opt/airflow/sql
-      - ./datalake:/opt/airflow/datalake
-      - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ heredado del anchor + explícito
-      - ./pyproject.toml:/opt/airflow/pyproject.toml
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,12 +94,6 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: airflow scheduler
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/sql:/opt/airflow/sql
-      - ./datalake:/opt/airflow/datalake
-      - ./datalake_bronze:/opt/airflow/datalake_bronze  # ✅ limpio, sin silver/gold huérfanos
-      - ./pyproject.toml:/opt/airflow/pyproject.toml
     depends_on:
       postgres:
         condition: service_healthy
