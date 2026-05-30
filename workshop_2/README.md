@@ -51,9 +51,8 @@ and persists raw JSON files in dedicated subfolders inside `datalake_bronze/`.
 | `extract_top_tracks` | Calls `chart.getTopTracks` → saves to `datalake_bronze/lastfm_top_tracks/` |
 | `extract_top_artists` | Calls `chart.getTopArtists` → saves to `datalake_bronze/lastfm_top_artists/` |
 | `validate_bronze_files` | Validates existence and integrity of both JSON files |
-| `trigger_silver_dag` | Automatically triggers `lastfm_silver` upon successful completion |
 
-**Schedule:** `@daily`  
+**Schedule:** `@daily` — Bronze and Silver are decoupled; Silver runs independently on `@weekly`.  
 **Output format:** `lastfm_top_{source}_YYYYMMDD_HHMMSS.json`
 
 ### DAG 2 — `lastfm_silver` (Silver Layer — Last.fm)
