@@ -315,12 +315,31 @@ def cap_outliers(series: pd.Series) -> pd.Series:
 # ──────────────────────────────────────────────
 # Funciones auxiliares
 # ──────────────────────────────────────────────
-def _get_latest_bronze_file(folder: str) -> str:
-    """Retorna el JSON más reciente en la carpeta bronze indicada."""
+def _read_all_bronze_files(folder: str) -> tuple[list, str]:
+    """
+    Lee TODOS los JSON históricos de la carpeta bronze/reddit/.
+    Retorna la lista consolidada de posts con su ingested_at individual
+    y el ingested_at más reciente para el campo de silver.
+    """
     files = sorted(glob.glob(os.path.join(folder, "*.json")))
     if not files:
         raise FileNotFoundError(f"No se encontraron archivos JSON en: {folder}")
-    return files[-1]
+
+    all_posts      = []
+    latest_ingested = ""
+    for filepath in files:
+        with open(filepath, "r", encoding="utf-8") as f:
+            posts = json.load(f)
+        # Reddit bronze es lista directa de posts sin _metadata
+        # Enriquecer cada post con su origen
+        ingested_at = os.path.basename(filepath).replace("reddit_music_opinions_", "").replace(".json", "")
+        for post in posts:
+            post["_ingested_at"] = ingested_at
+        all_posts.extend(posts)
+        latest_ingested = ingested_at
+
+    print(f"📂 {len(files)} archivos leídos → {len(all_posts)} posts brutos")
+    return all_posts, latest_ingested
 
 
 def _enforce_schema(df: pd.DataFrame, schema: pa.Schema) -> pd.DataFrame:
@@ -407,16 +426,11 @@ def reddit_silver_dag():
         Aplica el pipeline completo de limpieza NLP sobre el JSON más reciente
         de bronze/reddit/ y produce un Parquet en silver/reddit/.
         """
-        filepath = _get_latest_bronze_file(BRONZE_REDDIT_PATH)
-        print(f"📂 Procesando: {filepath}")
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            posts = json.load(f)
-
+        posts, latest_ingested = _read_all_bronze_files(BRONZE_REDDIT_PATH)
         ingested_at = datetime.utcnow().isoformat()
 
         # ── Paso 1: Construir DataFrame base ─────────────────────────────
-        df = pd.DataFrame(posts)                       # title | score | comments
+        df = pd.DataFrame(posts)                       # title | score | comments | _ingested_at
 
         # ── Paso 2: normalize_nulls sobre todo el DataFrame ──────────────
         df = df.apply(lambda col: col.map(normalize_nulls))
@@ -436,6 +450,7 @@ def reddit_silver_dag():
         df = df[df["raw_comment"].apply(lambda c: isinstance(c, str))]
         df = df[df["raw_comment"].str.strip() != ""]
         df = df.reset_index().rename(columns={"index": "post_id"})
+        # Preservar _ingested_at por post para análisis temporal
 
         # ── Paso 6: Asignar raw_comment_id + split_multiple_comments ──────
         df = df.reset_index(drop=True)
@@ -470,12 +485,18 @@ def reddit_silver_dag():
         df["score_capped"]      = cap_outliers(df["score"].astype(float))
         df["word_count_capped"] = cap_outliers(df["word_count"].astype(float))
 
-        # ── Paso 11: Deduplicación exacta ─────────────────────────────────
+        # ── Paso 11: Deduplicación exacta por (title + clean_comment + fecha) ──
+        # Preserva el mismo comentario si aparece en distintas ingestas (fechas distintas)
         before_dedup = len(df)
-        df = df.drop_duplicates(subset=["post_id", "clean_comment"])
+        df["_dedup_key"] = (
+            df["title"] + "||" +
+            df["clean_comment"] + "||" +
+            df["_ingested_at"].astype(str)
+        )
+        df = df.drop_duplicates(subset=["_dedup_key"]).drop(columns=["_dedup_key"])
         dupes = before_dedup - len(df)
         if dupes:
-            print(f"⚠️  {dupes} duplicados exactos eliminados")
+            print(f"⚠️  {dupes} duplicados exactos del mismo día eliminados")
 
         # ── Paso 12: Eliminar ruido ───────────────────────────────────────
         df = df[df["clean_comment"].notna() & (df["clean_comment"].str.strip() != "")]
@@ -485,17 +506,19 @@ def reddit_silver_dag():
         df["ingested_at"] = ingested_at
 
         # ── Paso 14: Schema enforcement ───────────────────────────────────
+        # Limpiar columna auxiliar antes de aplicar schema
+        if "_ingested_at" in df.columns:
+            df = df.drop(columns=["_ingested_at"])
         df = df[REDDIT_SCHEMA.names]   # reordenar columnas según schema
         df = _enforce_schema(df, REDDIT_SCHEMA)
 
         # ── Paso 15: Persistir como Parquet ───────────────────────────────
-        timestamp    = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filepath_out = _save_parquet(
             df, REDDIT_SCHEMA, SILVER_REDDIT_PATH,
-            f"reddit_music_opinions_{timestamp}.parquet"
+            "reddit_music_opinions_current.parquet"
         )
 
-        print(f"✅ Reddit silver — {len(df)} registros → {filepath_out}")
+        print(f"✅ Reddit silver — {len(df)} registros consolidados → {filepath_out}")
         print(f"   📊 Tipos de comentario: {df['comment_type'].value_counts().to_dict()}")
         print(f"   🎵 Con extracción artista/canción: {df['artist'].notna().sum()}")
 

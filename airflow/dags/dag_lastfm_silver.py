@@ -1,7 +1,7 @@
 """
 DAG: lastfm_silver
 Responsabilidad: Detecta nuevos JSON en bronze, los normaliza y persiste
-                como Parquet limpio en datalake_silver/
+                 como Parquet limpio en datalake_silver/
 
 Estructura de entrada (bronze):
     datalake_bronze/lastfm_top_artists/lastfm_top_artists_YYYYMMDD_HHMMSS.json
@@ -142,9 +142,9 @@ def build_name_tokens(name: str) -> str:
 def deduplicate(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, int]:
     """
     Elimina duplicados en tres pasos por prioridad:
-    1. Duplicados exactos        → conservar el primero
-    2. Mismo nombre, distinta ingesta → conservar el más reciente (ingested_at mayor)
-    3. Mismo nombre, distinto playcount/listeners → conservar el de mayor playcount
+      1. Duplicados exactos        → conservar el primero
+      2. Mismo nombre, distinta ingesta → conservar el más reciente (ingested_at mayor)
+      3. Mismo nombre, distinto playcount/listeners → conservar el de mayor playcount
 
     Retorna el DataFrame limpio y el total de duplicados eliminados.
     """
@@ -156,13 +156,13 @@ def deduplicate(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, int]:
     # Paso 2 — mismo nombre, distinta fecha de ingesta → más reciente
     df = (
         df.sort_values("ingested_at", ascending=False)
-        .drop_duplicates(subset=[key], keep="first")
+          .drop_duplicates(subset=[key], keep="first")
     )
 
     # Paso 3 — mismo nombre, mayor playcount
     df = (
         df.sort_values("playcount", ascending=False)
-        .drop_duplicates(subset=[key], keep="first")
+          .drop_duplicates(subset=[key], keep="first")
     )
 
     dropped = before - len(df)
@@ -172,21 +172,37 @@ def deduplicate(df: pd.DataFrame, key: str) -> tuple[pd.DataFrame, int]:
 # ──────────────────────────────────────────────
 # Funciones auxiliares
 # ──────────────────────────────────────────────
-def _get_latest_bronze_file(folder: str) -> str:
-    """Retorna el JSON más reciente en la carpeta bronze indicada."""
+def _read_all_bronze_files(folder: str, data_key: str, record_key: str) -> list:
+    """
+    Lee TODOS los JSON históricos de la carpeta bronze, extrae los registros
+    de cada archivo y retorna la lista consolidada con su ingested_at individual.
+    Permite preservar snapshots diarios del mismo artista/track.
+    """
     files = sorted(glob.glob(os.path.join(folder, "*.json")))
     if not files:
         raise FileNotFoundError(f"No se encontraron archivos JSON en: {folder}")
-    return files[-1]
+
+    all_records = []
+    for filepath in files:
+        with open(filepath, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        ingested_at = raw["_metadata"]["ingested_at"]
+        records     = raw["data"].get(data_key, {}).get(record_key, [])
+        for r in records:
+            r["_ingested_at"] = ingested_at
+        all_records.extend(records)
+
+    print(f"📂 {len(files)} archivos leídos → {len(all_records)} registros brutos")
+    return all_records
 
 
 def _enforce_schema(df: pd.DataFrame, schema: pa.Schema) -> pd.DataFrame:
     """
     Aplica el schema de destino al DataFrame:
-    - Verifica que todos los campos obligatorios estén presentes
-    - Rellena nulos en campos opcionales con 'unknown'
-    - Castea tipos según el schema
-    - Lanza SchemaError si un campo obligatorio tiene nulos
+      - Verifica que todos los campos obligatorios estén presentes
+      - Rellena nulos en campos opcionales con 'unknown'
+      - Castea tipos según el schema
+      - Lanza SchemaError si un campo obligatorio tiene nulos
     """
     required_fields = [f.name for f in schema if not f.nullable]
     optional_fields = [f.name for f in schema if f.nullable]
@@ -239,7 +255,7 @@ def _save_parquet(df: pd.DataFrame, schema: pa.Schema, folder: str, filename: st
 @dag(
     dag_id="lastfm_silver",
     description="Normaliza bronze → silver para top artists y top tracks de Last.fm",
-    schedule="@daily",
+    schedule="@weekly",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     default_args=DEFAULT_ARGS,
@@ -271,18 +287,17 @@ def lastfm_silver_dag():
     # ── Tarea 1: Transformar Top Artists ─────────────────────────────────
     @task()
     def transform_top_artists() -> str:
-        filepath = _get_latest_bronze_file(BRONZE_ARTISTS_PATH)
-        print(f"📂 Procesando: {filepath}")
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            content = json.load(f)
-
-        ingested_at = content["_metadata"]["ingested_at"]
-        artists     = content["data"]["artists"]["artist"]
+        """
+        Lee TODOS los JSON históricos de bronze/lastfm_top_artists/,
+        consolida los snapshots diarios y produce un único Parquet en silver.
+        Deduplicación por (name + date) preserva la evolución temporal.
+        """
+        all_artists = _read_all_bronze_files(BRONZE_ARTISTS_PATH, "artists", "artist")
 
         rows = []
-        for artist in artists:
-            name = artist.get("name", "").strip()
+        for artist in all_artists:
+            name        = artist.get("name", "").strip()
+            ingested_at = artist.pop("_ingested_at", "")
             rows.append({
                 "name":        name,
                 "name_tokens": build_name_tokens(name),
@@ -294,7 +309,7 @@ def lastfm_silver_dag():
 
         df = pd.DataFrame(rows)
 
-        # 1. Filtrar registros inválidos (campos obligatorios vacíos o playcount=0)
+        # 1. Filtrar registros inválidos
         before = len(df)
         df = df[df["name"].str.strip().ne("") & df["name"].notna()]
         df = df[df["playcount"] > 0]
@@ -302,43 +317,43 @@ def lastfm_silver_dag():
         if invalid:
             print(f"⚠️  {invalid} registros inválidos descartados")
 
-        # 2. Deduplicar
-        df, dupes = deduplicate(df, key="name")
+        # 2. Deduplicar por name + fecha — preserva snapshots diarios
+        df["_dedup_key"] = df["name"] + "||" + pd.to_datetime(df["ingested_at"]).dt.date.astype(str)
+        df, dupes = deduplicate(df, key="_dedup_key")
+        df = df.drop(columns=["_dedup_key"])
         if dupes:
-            print(f"⚠️  {dupes} duplicados eliminados")
+            print(f"⚠️  {dupes} duplicados exactos del mismo día eliminados")
 
         # 3. Aplicar schema y castear tipos
         df = _enforce_schema(df, ARTISTS_SCHEMA)
 
-        # 4. Persistir como Parquet
-        timestamp   = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        # 4. Persistir como Parquet (sobreescribe el anterior)
         filepath_out = _save_parquet(
             df, ARTISTS_SCHEMA, SILVER_ARTISTS_PATH,
-            f"lastfm_top_artists_{timestamp}.parquet"
+            "lastfm_top_artists_current.parquet"
         )
 
-        print(f"✅ Artists silver — {len(df)} registros → {filepath_out}")
-        print(f"   🎤 #1: {df.iloc[0]['name']} → tokens: '{df.iloc[0]['name_tokens']}' — listeners: {df.iloc[0]['listeners']:,}")
+        print(f"✅ Artists silver — {len(df)} snapshots consolidados → {filepath_out}")
+        print(f"   📅 Días cubiertos: {df['ingested_at'].nunique()}")
 
         return filepath_out
 
     # ── Tarea 2: Transformar Top Tracks ──────────────────────────────────
     @task()
     def transform_top_tracks() -> str:
-        filepath = _get_latest_bronze_file(BRONZE_TRACKS_PATH)
-        print(f"📂 Procesando: {filepath}")
-
-        with open(filepath, "r", encoding="utf-8") as f:
-            content = json.load(f)
-
-        ingested_at = content["_metadata"]["ingested_at"]
-        tracks      = content["data"]["tracks"]["track"]
+        """
+        Lee TODOS los JSON históricos de bronze/lastfm_top_tracks/,
+        consolida los snapshots diarios y produce un único Parquet en silver.
+        Deduplicación por (name + artist + date) preserva la evolución temporal.
+        """
+        all_tracks = _read_all_bronze_files(BRONZE_TRACKS_PATH, "tracks", "track")
 
         rows = []
-        for track in tracks:
+        for track in all_tracks:
             artist      = track.get("artist", {})
             name        = track.get("name", "").strip()
             artist_name = artist.get("name", "").strip()
+            ingested_at = track.pop("_ingested_at", "")
             rows.append({
                 "name":               name,
                 "name_tokens":        build_name_tokens(name),
@@ -365,25 +380,28 @@ def lastfm_silver_dag():
         if invalid:
             print(f"⚠️  {invalid} registros inválidos descartados")
 
-        # 2. Deduplicar por nombre de track + artista
-        df["_dedup_key"] = df["name"] + "||" + df["artist_name"]
+        # 2. Deduplicar por name + artist + fecha — preserva snapshots diarios
+        df["_dedup_key"] = (
+            df["name"] + "||" +
+            df["artist_name"] + "||" +
+            pd.to_datetime(df["ingested_at"]).dt.date.astype(str)
+        )
         df, dupes = deduplicate(df, key="_dedup_key")
         df = df.drop(columns=["_dedup_key"])
         if dupes:
-            print(f"⚠️  {dupes} duplicados eliminados")
+            print(f"⚠️  {dupes} duplicados exactos del mismo día eliminados")
 
         # 3. Aplicar schema y castear tipos
         df = _enforce_schema(df, TRACKS_SCHEMA)
 
-        # 4. Persistir como Parquet
-        timestamp    = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        # 4. Persistir como Parquet (sobreescribe el anterior)
         filepath_out = _save_parquet(
             df, TRACKS_SCHEMA, SILVER_TRACKS_PATH,
-            f"lastfm_top_tracks_{timestamp}.parquet"
+            "lastfm_top_tracks_current.parquet"
         )
 
-        print(f"✅ Tracks silver — {len(df)} registros → {filepath_out}")
-        print(f"   🎵 #1: {df.iloc[0]['name']} → tokens: '{df.iloc[0]['name_tokens']}' — {df.iloc[0]['artist_name']}")
+        print(f"✅ Tracks silver — {len(df)} snapshots consolidados → {filepath_out}")
+        print(f"   📅 Días cubiertos: {df['ingested_at'].nunique()}")
 
         return filepath_out
 
