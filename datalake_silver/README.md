@@ -1,19 +1,19 @@
-# datalake_silver — Capa Silver (Datos Procesados)
+# datalake_silver — Silver Layer (Processed Data)
 
-Almacena los datos **normalizados, tipados y deduplicados** en formato Parquet (compresión Snappy). Los archivos silver son producidos por los DAGs de transformación a partir de los JSON crudos de bronze.
+Stores **normalised, typed and deduplicated** data in Parquet format (Snappy compression). Silver files are produced by transformation DAGs from the raw bronze JSON files.
 
 ---
 
-## Estructura
+## Structure
 
 ```
 datalake_silver/
 ├── lastfm_top_artists/
-│   └── lastfm_top_artists_YYYYMMDD_HHMMSS.parquet  # Consolidado de todos los bronze
+│   └── lastfm_top_artists_YYYYMMDD_HHMMSS.parquet  # Consolidated from all bronze snapshots
 ├── lastfm_top_tracks/
-│   └── lastfm_top_tracks_YYYYMMDD_HHMMSS.parquet   # Consolidado de todos los bronze
+│   └── lastfm_top_tracks_YYYYMMDD_HHMMSS.parquet   # Consolidated from all bronze snapshots
 └── reddit/
-    └── reddit_music_opinions_YYYYMMDD_HHMMSS.parquet  # NLP procesado
+    └── reddit_music_opinions_YYYYMMDD_HHMMSS.parquet  # NLP-processed Reddit data
 ```
 
 ---
@@ -22,88 +22,88 @@ datalake_silver/
 
 ### `lastfm_top_artists`
 
-| Campo | Tipo | Requerido | Descripción |
+| Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | Sí | Nombre del artista |
-| `name_tokens` | string | Sí | Nombre normalizado (lowercase, sin HTML ni puntuación) |
-| `playcount` | int64 | Sí | Total de reproducciones |
-| `listeners` | int64 | Sí | Oyentes únicos |
-| `mbid` | string | No → `unknown` | ID de MusicBrainz |
-| `ingested_at` | string | Sí | Timestamp ISO-8601 del archivo bronze de origen |
+| `name` | string | Yes | Artist name |
+| `name_tokens` | string | Yes | Normalised name (lowercase, no HTML or punctuation) |
+| `playcount` | int64 | Yes | Total play count |
+| `listeners` | int64 | Yes | Unique listener count |
+| `mbid` | string | No → `unknown` | MusicBrainz ID |
+| `ingested_at` | string | Yes | ISO-8601 timestamp of the source bronze file |
 
 ### `lastfm_top_tracks`
 
-| Campo | Tipo | Requerido | Descripción |
+| Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | Sí | Nombre del track |
-| `name_tokens` | string | Sí | Nombre normalizado |
-| `duration_sec` | int64 | Sí | Duración en segundos |
-| `playcount` | int64 | Sí | Total de reproducciones |
-| `listeners` | int64 | Sí | Oyentes únicos |
-| `mbid` | string | No → `unknown` | ID de MusicBrainz del track |
-| `artist_name` | string | Sí | Nombre del artista |
-| `artist_name_tokens` | string | Sí | Nombre del artista normalizado |
-| `artist_mbid` | string | No → `unknown` | ID de MusicBrainz del artista |
-| `ingested_at` | string | Sí | Timestamp ISO-8601 del archivo bronze de origen |
+| `name` | string | Yes | Track name |
+| `name_tokens` | string | Yes | Normalised name |
+| `duration_sec` | int64 | Yes | Duration in seconds |
+| `playcount` | int64 | Yes | Total play count |
+| `listeners` | int64 | Yes | Unique listener count |
+| `mbid` | string | No → `unknown` | Track MusicBrainz ID |
+| `artist_name` | string | Yes | Artist name |
+| `artist_name_tokens` | string | Yes | Normalised artist name |
+| `artist_mbid` | string | No → `unknown` | Artist MusicBrainz ID |
+| `ingested_at` | string | Yes | ISO-8601 timestamp of the source bronze file |
 
 ### `reddit_music_opinions`
 
-| Campo | Tipo | Requerido | Descripción |
+| Field | Type | Required | Description |
 |---|---|---|---|
-| `post_id` | int64 | Sí | Índice original del post |
-| `title` | string | Sí | Título del post (sin prefijo de flair) |
-| `score` | int64 | Sí | Karma del post (nulo → 0) |
-| `raw_comment_id` | int64 | Sí | Índice del comentario antes del explode |
-| `raw_comment` | string | Sí | Texto original del comentario |
-| `clean_comment` | string | Sí | Comentario limpio (HTML, links, puntuación removidos) |
-| `tokens` | string | Sí | Lista de tokens serializada como string |
-| `comment_type` | string | Sí | `recommendation` / `opinion` / `mixed` / `other` |
-| `confidence` | float64 | Sí | Confianza de la clasificación (0.0 – 1.0) |
-| `has_music_pattern` | bool | Sí | Detectó patrón artista/canción |
+| `post_id` | int64 | Yes | Original post index |
+| `title` | string | Yes | Post title (flair prefix removed) |
+| `score` | int64 | Yes | Post karma (null → 0) |
+| `raw_comment_id` | int64 | Yes | Comment index before explode |
+| `raw_comment` | string | Yes | Original comment text |
+| `clean_comment` | string | Yes | Cleaned comment (HTML, links, punctuation removed) |
+| `tokens` | string | Yes | Token list serialised as string |
+| `comment_type` | string | Yes | `recommendation` / `opinion` / `mixed` / `other` |
+| `confidence` | float64 | Yes | Classification confidence (0.0 – 1.0) |
+| `has_music_pattern` | bool | Yes | Music artist/song pattern detected |
 | `pattern_type` | string | No → `unknown` | `dash` / `by` / `colon` |
-| `has_contrast` | bool | Sí | Contiene marcadores de opinión (but, however…) |
-| `word_count` | int64 | Sí | Cantidad de tokens |
-| `word_count_capped` | float64 | Sí | word_count con capping IQR |
-| `score_capped` | float64 | Sí | score del post con capping IQR |
-| `artist` | string | No → `unknown` | Artista extraído del comentario |
-| `song` | string | No → `unknown` | Canción extraída del comentario |
-| `extract_confidence` | float64 | Sí | Confianza de la extracción artista/canción |
-| `ingested_at` | string | Sí | Timestamp ISO-8601 de ingesta |
+| `has_contrast` | bool | Yes | Contains opinion markers (but, however…) |
+| `word_count` | int64 | Yes | Token count |
+| `word_count_capped` | float64 | Yes | IQR-capped word count |
+| `score_capped` | float64 | Yes | IQR-capped post score |
+| `artist` | string | No → `unknown` | Artist extracted from comment |
+| `song` | string | No → `unknown` | Song extracted from comment |
+| `extract_confidence` | float64 | Yes | Artist/song extraction confidence |
+| `ingested_at` | string | Yes | ISO-8601 ingestion timestamp |
 
 ---
 
-## Pipeline de Transformación
+## Transformation Pipelines
 
 ### Last.fm (`dag_lastfm_silver.py`)
 
-1. Lee **todos** los JSON históricos de bronze (no solo el último)
-2. Consolida snapshots diarios etiquetados con su `ingested_at` individual
-3. Filtra registros inválidos (nombre vacío, playcount = 0)
-4. Deduplica en 3 pasos: exactos → mismo nombre más reciente → mayor playcount
-5. Genera `name_tokens`: normalización → decode HTML → limpieza de puntuación → eliminación de links
-6. Castea tipos y rellena opcionales con `"unknown"`
-7. Persiste como Parquet Snappy
+1. Reads **all** historical bronze JSONs (not just the latest)
+2. Consolidates daily snapshots, each tagged with its individual `ingested_at`
+3. Filters invalid records (empty name, playcount = 0)
+4. 3-pass deduplication: exact → same name latest date → highest playcount
+5. Builds `name_tokens`: normalise → HTML decode → punctuation cleaning → link removal
+6. Casts types and fills optional fields with `"unknown"`
+7. Writes as Snappy Parquet
 
 ### Reddit (`dag_reddit_silver.py`)
 
-1. Normaliza nulos (`None`, `"[deleted]"`, `""` → NaN)
-2. Filtra posts sin título o sin comentarios
-3. Explota comentarios (una fila por comentario)
-4. Divide comentarios multi-oración
-5. Limpia HTML, links y puntuación → `clean_comment`
-6. Tokeniza → `tokens`
-7. Clasifica comentario → `comment_type`, `confidence`, `has_music_pattern`, `pattern_type`, `has_contrast`
-8. Extrae artista/canción → `artist`, `song`, `extract_confidence`
-9. Aplica capping IQR sobre `score` y `word_count`
-10. Deduplica por `(post_id, clean_comment)`
-11. Elimina ruido (clean_comment vacío)
-12. Enforcea schema y persiste como Parquet Snappy
+1. Normalises nulls (`None`, `"[deleted]"`, `""` → NaN)
+2. Filters posts without title or comments
+3. Explodes comments (one row per comment)
+4. Splits multi-sentence comments
+5. Cleans HTML, links and punctuation → `clean_comment`
+6. Tokenises → `tokens`
+7. Classifies comment → `comment_type`, `confidence`, `has_music_pattern`, `pattern_type`, `has_contrast`
+8. Extracts artist/song → `artist`, `song`, `extract_confidence`
+9. Applies IQR capping on `score` and `word_count`
+10. Deduplicates by `(post_id, clean_comment)`
+11. Removes noise (empty clean_comment)
+12. Enforces schema and writes as Snappy Parquet
 
 ---
 
-## DAGs Productores
+## Producer DAGs
 
-| Carpeta | DAG | Schedule |
+| Folder | DAG | Schedule |
 |---|---|---|
 | `lastfm_top_artists/` | `lastfm_silver` | `@weekly` |
 | `lastfm_top_tracks/` | `lastfm_silver` | `@weekly` |

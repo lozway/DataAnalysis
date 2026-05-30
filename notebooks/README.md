@@ -1,51 +1,74 @@
-# notebooks — Análisis Exploratorio y Desarrollo de Pipelines
+# notebooks — Exploratory Analysis and Pipeline Development
 
-Contiene los notebooks de Jupyter usados para explorar los datos crudos, prototipar las funciones de limpieza NLP y validar los schemas antes de llevarlos a los DAGs de Airflow.
+Contains Jupyter notebooks used to explore raw data, prototype NLP cleaning functions and validate schemas before porting them to Airflow DAGs.
 
 ---
 
 ## Notebooks
 
-### `esqm_limpieza.ipynb` — Pipeline NLP para Reddit
+### `esqm_limpieza.ipynb` — Reddit NLP Cleaning Pipeline
 
-Desarrolla y valida el pipeline completo de limpieza y clasificación de comentarios de Reddit que luego es portado al DAG `reddit_silver`.
+Develops and validates the full comment cleaning and classification pipeline that is later ported to the `reddit_silver` DAG.
 
-**Pasos documentados en el notebook:**
+**Steps documented in the notebook:**
 
-| Paso | Función | Descripción |
+| Step | Function | Description |
 |---|---|---|
-| 1 | `normalize_nulls` | Estandariza `None`, `"[deleted]"`, `""` → NaN |
-| 2 | Filtro | Descarta posts sin título o sin comentarios |
-| 3 | `explode` | Una fila por comentario |
-| 4 | `split_multiple_comments` | Divide por saltos de línea o mayúsculas tras paréntesis |
-| 5 | `clean_html_entities` | Decodifica entidades HTML (`&amp;`, `&#39;`…) |
-| 6 | `remove_links` | Elimina URLs y links Markdown |
-| 7 | `clean_punctuation` | Elimina puntuación excepto `/`, `&`, `-`, `'` |
-| 8 | `normalize_text` | Lowercase + colapso de espacios múltiples |
-| 9 | `tokenize` | Split por espacios |
-| 10 | `classify_comment` | Clasifica en `recommendation` / `opinion` / `mixed` / `other` con score de confianza |
-| 11 | `extract_artist_song` | Extrae artista y canción usando patrones `dash`, `by`, `colon` |
-| 12 | `cap_outliers` | Capping IQR sobre `word_count` y `score` |
-| 13 | Deduplicación | Por `(post_id, clean_comment)` |
-| 14 | Schema enforcement | Casteo de tipos y relleno de opcionales con `"unknown"` |
+| 1 | `normalize_nulls` | Standardises `None`, `"[deleted]"`, `""` → NaN |
+| 2 | Filter | Drops posts without title or comments |
+| 3 | `explode` | One row per comment |
+| 4 | `split_multiple_comments` | Splits by line breaks or capitalisation after parentheses |
+| 5 | `clean_html_entities` | Decodes HTML entities (`&amp;`, `&#39;`…) |
+| 6 | `remove_links` | Removes URLs and Markdown links |
+| 7 | `clean_punctuation` | Removes punctuation except `/`, `&`, `-`, `'` |
+| 8 | `normalize_text` | Lowercase + collapse multiple spaces |
+| 9 | `tokenize` | Split by spaces |
+| 10 | `classify_comment` | Classifies as `recommendation` / `opinion` / `mixed` / `other` with confidence score |
+| 11 | `extract_artist_song` | Extracts artist and song using `dash`, `by`, `colon` patterns |
+| 12 | `cap_outliers` | IQR capping on `word_count` and `score` |
+| 13 | Deduplication | By `(post_id, clean_comment)` |
+| 14 | Schema enforcement | Type casting and optional fields filled with `"unknown"` |
 
-**Clasificación de comentarios:**
+**Comment classification:**
+- `recommendation` → detects music pattern without contrast markers
+- `opinion` → more than 6 words or markers like `but`, `however`, `although`
+- `mixed` → has music pattern AND contrast markers
+- `other` → does not meet any of the above criteria
 
-- `recommendation` → detecta patrón musical sin marcadores de contraste
-- `opinion` → más de 6 palabras o marcadores como `but`, `however`, `although`
-- `mixed` → tiene patrón musical Y marcadores de contraste
-- `other` → no cumple ningún criterio anterior
+### `data_quality.ipynb` — Silver Layer Data Quality Findings
 
-La confianza se calcula sumando pesos: presencia de patrón (+0.45), longitud corta (+0.25/+0.15), contraste (-0.20), tipo mixed (-0.10), puntuación excesiva (-0.10).
+Reads **Silver Parquet files** directly and documents all data quality observations:
+- Descriptive statistics per source (Reddit, Last.fm Artists, Last.fm Tracks)
+- Null rate analysis per field
+- Outlier analysis using IQR method (boxplots + statistics table)
+- Text length distributions (raw vs clean comment)
+- NLP classification findings
+- Duplicate rate analysis
+- Schema compliance rate
+- Structured Data Quality Findings Report (table for the workshop report)
+
+### `gold_preview.ipynb` — Gold Layer Preview
+
+Reads **Gold Parquet files** (`governance_*.parquet` and `storytelling_*.parquet`) and previews:
+- Governance KPI table with justification for each selected metric
+- Null rate, outlier rate and text length visualisations from the gold layer
+- Sentiment distribution (VADER: positive / negative / neutral)
+- Sentiment trend over time
+- Top keywords and sentiment association
+- Comment type distribution
+- Volume trends by source
+- Top artists and tracks from Last.fm
+- Dashboard narrative: what story the data tells
 
 ---
 
-## Dependencias
+## Dependencies
 
 ```toml
 # pyproject.toml
 pandas
 pyarrow
+matplotlib
 jupyter
 ```
 

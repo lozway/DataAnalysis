@@ -1,91 +1,91 @@
-# datalake_gold — Capa Gold (KPIs y Agregaciones)
+# datalake_gold — Gold Layer (KPIs and Aggregations)
 
-Almacena los datasets finales producidos por el DAG `gold_pipeline` con PySpark. Contiene dos tipos de archivos: métricas de gobernanza de datos y agregaciones para el dashboard de storytelling.
+Stores the final datasets produced by the `gold_pipeline` DAG using PySpark. Contains two file types: data governance metrics and storytelling aggregations for the dashboard.
 
 ---
 
-## Estructura
+## Structure
 
 ```
 datalake_gold/
-├── governance_YYYYMMDD_HHMMSS.parquet    # KPIs de calidad de datos
-└── storytelling_YYYYMMDD_HHMMSS.parquet  # Agregaciones para dashboard
+├── governance_YYYYMMDD_HHMMSS.parquet    # Data quality KPIs
+└── storytelling_YYYYMMDD_HHMMSS.parquet  # Dashboard aggregations
 ```
 
 ---
 
-## `governance_*.parquet` — Gobernanza de Datos
+## `governance_*.parquet` — Data Governance
 
-Cada fila representa un KPI medido sobre una fuente y campo específico.
+Each row represents a KPI measured over a specific source and field.
 
-| Campo | Tipo | Descripción |
+| Field | Type | Description |
 |---|---|---|
 | `source` | string | `reddit` / `lastfm_artists` / `lastfm_tracks` |
-| `field_name` | string | Nombre del campo evaluado, o `ALL` para métricas globales |
-| `kpi_type` | string | Tipo de KPI (ver tabla abajo) |
-| `value` | float64 | Valor numérico del KPI |
+| `field_name` | string | Field name evaluated, or `ALL` for global metrics |
+| `kpi_type` | string | KPI type (see table below) |
+| `value` | float64 | Numeric KPI value |
 | `unit` | string | `count` / `percentage` / `characters` / `days` |
-| `computed_at` | string | Timestamp ISO-8601 de cómputo |
+| `computed_at` | string | ISO-8601 computation timestamp |
 
-### KPIs implementados
+### KPIs Implemented
 
-| `kpi_type` | Descripción | Justificación |
+| `kpi_type` | Description | Justification |
 |---|---|---|
-| `volume` | Total de registros por fuente | Verifica completitud de ingesta |
-| `null_rate` | % de nulos por campo | Detecta degradación en fuentes |
-| `schema_compliance` | % de filas con todos los campos no nulos | Mide adherencia al schema silver |
-| `outlier_rate` | % de registros fuera del rango IQR (×1.5) | Identifica anomalías en numéricos |
-| `text_len_mean` | Longitud media en caracteres | Evalúa riqueza del texto |
-| `text_len_median` | Longitud mediana en caracteres | Robusto ante extremos |
-| `text_len_min` | Longitud mínima en caracteres | Detecta comentarios vacíos post-limpieza |
-| `text_len_max` | Longitud máxima en caracteres | Detecta comentarios anómalamente largos |
-| `ingestion_days` | Días distintos de ingesta registrados | Verifica frecuencia de ingesta |
+| `volume` | Total records per source | Verifies ingestion completeness |
+| `null_rate` | % nulls per field | Detects source degradation |
+| `schema_compliance` | % rows with all required fields non-null | Measures silver schema adherence |
+| `outlier_rate` | % records outside IQR fence (×1.5) | Identifies anomalies in numeric fields |
+| `text_len_mean` | Mean character length | Evaluates text richness |
+| `text_len_median` | Median character length | Robust to extremes |
+| `text_len_min` | Minimum character length | Detects empty comments post-cleaning |
+| `text_len_max` | Maximum character length | Detects abnormally long comments |
+| `ingestion_days` | Distinct ingestion dates recorded | Verifies ingestion frequency compliance |
 
 ---
 
-## `storytelling_*.parquet` — Agregaciones para Dashboard
+## `storytelling_*.parquet` — Dashboard Aggregations
 
-Cada fila es un punto de datos para una visualización del dashboard.
+Each row is a data point for a dashboard visualisation.
 
-| Campo | Tipo | Descripción |
+| Field | Type | Description |
 |---|---|---|
-| `metric_type` | string | Tipo de agregación (ver tabla abajo) |
-| `dim1` | string | Dimensión primaria (etiqueta, fecha, artista, keyword…) |
-| `dim2` | string | Dimensión secundaria (fuente, nombre del artista para tracks) |
-| `record_count` | int64 | Cantidad de registros en el grupo |
-| `pct` | float64 | Porcentaje sobre el total de la métrica |
-| `avg_score` | float64 | Score promedio (sentimiento, listeners, playcount según métrica) |
-| `computed_at` | string | Timestamp ISO-8601 de cómputo |
+| `metric_type` | string | Aggregation type (see table below) |
+| `dim1` | string | Primary dimension (label, date, artist, keyword…) |
+| `dim2` | string | Secondary dimension (source name, artist for tracks) |
+| `record_count` | int64 | Number of records in the group |
+| `pct` | float64 | Percentage over the metric total |
+| `avg_score` | float64 | Average score (sentiment, listeners, playcount depending on metric) |
+| `computed_at` | string | ISO-8601 computation timestamp |
 
-### Métricas implementadas
+### Metrics Implemented
 
-| `metric_type` | Dimensiones | Descripción | User Story |
+| `metric_type` | Dimensions | Description | Linked User Story |
 |---|---|---|---|
-| `sentiment_dist` | `positive/negative/neutral` × `reddit` | Distribución de sentimiento VADER por label | Analista quiere saber si la recepción es positiva o negativa |
-| `sentiment_trend` | fecha × `reddit` | Sentimiento promedio por fecha de ingesta | Seguimiento temporal de la opinión pública |
-| `comment_type_dist` | `recommendation/opinion/mixed/other` × `reddit` | Distribución del tipo de comentario | Diferencia recomendaciones de opiniones crudas |
-| `top_keyword` | keyword × `reddit` | Top 25 términos más frecuentes (sin stop-words) | Identifica temas y artistas más mencionados |
-| `volume_trend` | fecha × fuente | Registros por fecha por fuente | Picos de actividad de la comunidad |
-| `reddit_artist` | artista × `reddit` | Artistas más mencionados en comentarios | Artistas con mayor conversación orgánica |
-| `top_artist_lastfm` | artista × `lastfm` | Top 20 artistas por oyentes únicos | Ranking cuantitativo de popularidad |
-| `top_track_lastfm` | track × artista | Top 20 tracks por reproducciones | Canciones más escuchadas globalmente |
+| `sentiment_dist` | `positive/negative/neutral` × `reddit` | VADER sentiment label distribution | Analyst needs positive/negative reception overview |
+| `sentiment_trend` | date × `reddit` | Average sentiment score per ingestion date | Temporal tracking of public opinion |
+| `comment_type_dist` | `recommendation/opinion/mixed/other` × `reddit` | NLP comment type distribution | Differentiates recommendations from raw opinions |
+| `top_keyword` | keyword × `reddit` | Top 25 most frequent tokens (stop-words excluded) | Identifies most-discussed topics and artists |
+| `volume_trend` | date × source | Records per date per source | Detects community activity peaks |
+| `reddit_artist` | artist × `reddit` | Most mentioned artists in Reddit comments | Artists with highest organic conversation |
+| `top_artist_lastfm` | artist × `lastfm` | Top 20 artists by unique listener count | Quantitative popularity ranking |
+| `top_track_lastfm` | track × artist | Top 20 tracks by play count | Most-played songs globally |
 
 ---
 
-## Análisis de Sentimiento
+## Sentiment Analysis
 
-Se usa **VADER** (Valence Aware Dictionary and sEntiment Reasoner) aplicado sobre el campo `clean_comment` de Reddit:
+**VADER** (Valence Aware Dictionary and sEntiment Reasoner) is applied to the `clean_comment` field from Reddit:
 
 - `compound ≥ 0.05` → `positive`
 - `compound ≤ -0.05` → `negative`
-- Entre ambos → `neutral`
+- Between both thresholds → `neutral`
 
-VADER es especialmente efectivo para texto informal de redes sociales (capitalización, signos de exclamación, jerga), lo que lo hace idóneo para comentarios de Reddit sobre música.
+VADER is particularly effective for informal social media text (capitalisation, exclamation marks, slang), making it ideal for Reddit music discussions.
 
 ---
 
-## DAG Productor
+## Producer DAG
 
-| DAG | Schedule | Tecnología |
+| DAG | Schedule | Technology |
 |---|---|---|
-| `gold_pipeline` | `@weekly` | PySpark `local[*]`, driver 1 GB |
+| `gold_pipeline` | `@weekly` | PySpark `local[*]`, 1 GB driver memory |

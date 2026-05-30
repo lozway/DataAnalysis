@@ -1,6 +1,6 @@
-# Airflow — Orquestación del Pipeline
+# Airflow — Pipeline Orchestration
 
-Contiene todos los DAGs y scripts SQL que conforman la capa de orquestación del proyecto. El stack corre en Docker con Apache Airflow 2.8.1 y PostgreSQL 15.
+Contains all DAGs and SQL scripts that form the orchestration layer. The stack runs in Docker with Apache Airflow 2.8.1 and PostgreSQL 15.
 
 ---
 
@@ -8,7 +8,7 @@ Contiene todos los DAGs y scripts SQL que conforman la capa de orquestación del
 
 ### `dag_lastfm_ingest.py` — Bronze · `@daily`
 
-Extrae los rankings globales de Last.fm y persiste los JSON crudos en `datalake_bronze/`.
+Extracts Last.fm global rankings and persists raw JSON files in `datalake_bronze/`.
 
 ```
 extract_top_tracks ─┐
@@ -16,17 +16,17 @@ extract_top_tracks ─┐
 extract_top_artists─┘
 ```
 
-| Task | Descripción |
+| Task | Description |
 |---|---|
-| `extract_top_tracks` | Llama `chart.getTopTracks` (top 50) → `datalake_bronze/lastfm_top_tracks/` |
-| `extract_top_artists` | Llama `chart.getTopArtists` (top 50) → `datalake_bronze/lastfm_top_artists/` |
-| `validate_bronze_files` | Verifica existencia e integridad de ambos JSON |
+| `extract_top_tracks` | Calls `chart.getTopTracks` (top 50) → `datalake_bronze/lastfm_top_tracks/` |
+| `extract_top_artists` | Calls `chart.getTopArtists` (top 50) → `datalake_bronze/lastfm_top_artists/` |
+| `validate_bronze_files` | Verifies existence and integrity of both JSON files |
 
 ---
 
 ### `dag_lastfm_silver.py` — Silver · `@weekly`
 
-Lee **todos** los JSON históricos de bronze, consolida snapshots diarios, deduplica y produce Parquet normalizados.
+Reads **all** historical bronze JSONs, consolidates daily snapshots, deduplicates and produces normalised Parquet files.
 
 ```
 wait_for_artists_bronze ─► transform_top_artists ─┐
@@ -34,25 +34,25 @@ wait_for_artists_bronze ─► transform_top_artists ─┐
 wait_for_tracks_bronze  ─► transform_top_tracks  ─┘
 ```
 
-**Pipeline de limpieza:** filtro de inválidos → normalización de texto → decode HTML → limpieza de puntuación → deduplicación 3-pass → enforcement de schema → Parquet Snappy.
+**Cleaning pipeline:** invalid record filter → text normalisation → HTML decode → punctuation cleaning → 3-pass deduplication → schema enforcement → Snappy Parquet.
 
 ---
 
 ### `dag_reddit_silver.py` — Silver · Manual (on-demand)
 
-Aplica el pipeline NLP completo a los comentarios de Reddit y produce un Parquet estructurado.
+Applies the full NLP pipeline to Reddit comments and produces a structured Parquet file.
 
 ```
 wait_for_reddit_bronze ─► transform_reddit ─► validate_silver_file
 ```
 
-**Pipeline NLP (15 pasos):** normalización de nulos → explosión de comentarios → split multi-oración → limpieza HTML/links/puntuación → tokenización → clasificación de comentario (`recommendation` / `opinion` / `mixed` / `other`) → extracción de artista/canción → capping IQR → deduplicación → enforcement de schema.
+**NLP pipeline (15 steps):** null normalisation → comment explosion → multi-sentence split → HTML/link/punctuation cleaning → tokenisation → comment classification (`recommendation` / `opinion` / `mixed` / `other`) → artist/song extraction → IQR capping → deduplication → schema enforcement.
 
 ---
 
 ### `dag_gold.py` — Gold · `@weekly`
 
-Lee los Parquet de silver con PySpark en modo local y produce dos archivos gold.
+Reads silver Parquet files with PySpark in local mode and produces two gold output files.
 
 ```
 compute_governance   ─┐
@@ -60,12 +60,12 @@ compute_governance   ─┐
 compute_storytelling ─┘
 ```
 
-| Task | Output | Contenido |
+| Task | Output | Content |
 |---|---|---|
-| `compute_governance` | `governance_*.parquet` | KPIs: null rate, volumen, schema compliance, outlier rate (IQR), text length stats, ingestion days |
-| `compute_storytelling` | `storytelling_*.parquet` | Sentiment VADER, trends, top keywords, comment types, top artistas/tracks LastFM |
+| `compute_governance` | `governance_*.parquet` | KPIs: null rate, volume, schema compliance, outlier rate (IQR), text length stats, ingestion days |
+| `compute_storytelling` | `storytelling_*.parquet` | VADER sentiment, trends, top keywords, comment types, top LastFM artists/tracks |
 
-**Configuración PySpark:** `local[*]`, driver memory 1 GB, shuffle partitions 4, UI deshabilitada.
+**PySpark config:** `local[*]`, driver memory 1 GB, shuffle partitions 4, UI disabled.
 
 ---
 
@@ -73,13 +73,13 @@ compute_storytelling ─┘
 
 ### `sql/init_es_db.sql`
 
-Script de inicialización que PostgreSQL ejecuta al primer arranque. Crea la base de datos secundaria requerida por el stack.
+Initialisation script executed by PostgreSQL on first startup. Creates the secondary database required by the stack.
 
 ---
 
-## Conexión Airflow necesaria
+## Required Airflow Connection
 
-El sensor de archivos (`FileSensor`) requiere la conexión `fs_default` de tipo `File (path)`. Se crea automáticamente en el servicio `airflow-init` del docker-compose:
+The file sensor (`FileSensor`) requires the `fs_default` connection of type `File (path)`. It is created automatically by the `airflow-init` service in docker-compose:
 
 ```bash
 airflow connections add fs_default --conn-type fs --conn-extra '{"path": "/"}'
@@ -87,11 +87,11 @@ airflow connections add fs_default --conn-type fs --conn-extra '{"path": "/"}'
 
 ---
 
-## Variables de Entorno requeridas
+## Required Environment Variables
 
-| Variable | Descripción |
+| Variable | Description |
 |---|---|
-| `LASTFM_API_KEY` | API key de Last.fm |
-| `LASTFM_USER_AGENT` | User agent para peticiones (default: `AirflowPipeline`) |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` | Credenciales de PostgreSQL |
-| `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` | Credenciales del admin de Airflow |
+| `LASTFM_API_KEY` | Last.fm API key |
+| `LASTFM_USER_AGENT` | User agent for requests (default: `AirflowPipeline`) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | PostgreSQL credentials |
+| `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` | Airflow admin credentials |

@@ -1,10 +1,10 @@
 # Music Artists & Albums Public Perception
 
-**Curso:** Programación para Análisis de Datos — Semestre 2026-I  
+**Course:** Data Analysis Programming — Semester 2026-I  
 **Universidad Distrital Francisco José de Caldas**
 
-**Equipo:**
-| Nombre | Código |
+**Team:**
+| Name | Student ID |
 |---|---|
 | Carlos Andres Celis Herrera | 20222020051 |
 | Juan Diego Lozada Gonzalez | 20222020014 |
@@ -12,95 +12,95 @@
 
 ---
 
-## Descripción
+## Description
 
-Pipeline de datos end-to-end que analiza cómo el público percibe artistas, álbumes y tendencias musicales. Combina datos cuantitativos de la API de Last.fm con opiniones cualitativas extraídas de comunidades de Reddit para producir métricas de sentimiento y gobernanza.
+An end-to-end data pipeline that analyses how the public perceives artists, albums and music trends. It combines quantitative data from the Last.fm API with qualitative opinions scraped from Reddit communities to produce sentiment metrics and data governance KPIs.
 
-**Usuario funcional:** Analistas de sellos discográficos o managers de artistas que monitorean la recepción pública de lanzamientos.
+**Functional user:** Music label analysts or artist managers monitoring public reception of new releases.
 
 ---
 
-## Arquitectura Medallion
+## Medallion Architecture
 
 ```
-Fuentes externas
+External sources
     ├── Last.fm API  (chart.getTopArtists / chart.getTopTracks)
     └── Reddit scraping  (r/indieheads, r/hiphopheads)
             │
             ▼
-    datalake_bronze/   ← JSON crudos, inmutables, con timestamp
+    datalake_bronze/   ← Raw JSON files, immutable, timestamped
             │
-            ▼  (Airflow DAGs de transformación)
-    datalake_silver/   ← Parquet normalizados, tipados, deduplicados
+            ▼  (Airflow transformation DAGs)
+    datalake_silver/   ← Normalised, typed, deduplicated Parquet files
             │
             ▼  (PySpark @weekly)
-    datalake_gold/     ← KPIs de gobernanza + agregaciones para dashboard
+    datalake_gold/     ← Governance KPIs + dashboard aggregations
 ```
 
 ---
 
-## Estructura del Repositorio
+## Repository Structure
 
 ```
 .
 ├── airflow/
-│   ├── dags/                    # DAGs de Airflow (orquestación)
-│   └── sql/                     # Scripts de inicialización de PostgreSQL
-├── datalake_bronze/             # Capa bronze — datos crudos
+│   ├── dags/                    # Airflow DAGs (orchestration)
+│   └── sql/                     # PostgreSQL initialisation scripts
+├── datalake_bronze/             # Bronze layer — raw data
 │   ├── lastfm_top_artists/
 │   ├── lastfm_top_tracks/
 │   └── reddit/
-├── datalake_silver/             # Capa silver — datos procesados
+├── datalake_silver/             # Silver layer — processed data
 │   ├── lastfm_top_artists/
 │   ├── lastfm_top_tracks/
 │   └── reddit/
-├── datalake_gold/               # Capa gold — KPIs y agregaciones
-├── dashboard/                   # Aplicación Plotly Dash
-├── notebooks/                   # Notebooks de análisis exploratorio
-├── workshop_1/                  # Entregables Workshop 1
-├── workshop_2/                  # Entregables Workshop 2
+├── datalake_gold/               # Gold layer — KPIs and aggregations
+├── dashboard/                   # Plotly Dash application
+├── notebooks/                   # Exploratory analysis notebooks
+├── workshop_1/                  # Workshop 1 deliverables
+├── workshop_2/                  # Workshop 2 deliverables
 ├── docker-compose.yml           # Stack: PostgreSQL + Airflow
-├── Dockerfile                   # Imagen custom con Java + PySpark + VADER
-├── ingest_lastfm.py             # Script standalone de ingesta Last.fm
-└── pyproject.toml               # Dependencias Poetry
+├── Dockerfile                   # Custom image with Java + PySpark + VADER
+├── ingest_lastfm.py             # Standalone Last.fm ingestion script
+└── pyproject.toml               # Poetry dependencies
 ```
 
 ---
 
-## DAGs y Schedules
+## DAGs and Schedules
 
-| DAG | Schedule | Capa | Descripción |
+| DAG | Schedule | Layer | Description |
 |---|---|---|---|
-| `lastfm_ingest` | `@daily` | Bronze | Extrae top 50 artistas y tracks de Last.fm |
-| `lastfm_silver` | `@weekly` | Silver | Normaliza y consolida histórico de Last.fm |
-| `reddit_silver` | Manual | Silver | Aplica pipeline NLP a comentarios de Reddit |
-| `gold_pipeline` | `@weekly` | Gold | KPIs de gobernanza + agregaciones con PySpark |
+| `lastfm_ingest` | `@daily` | Bronze | Extracts top 50 artists and tracks from Last.fm |
+| `lastfm_silver` | `@weekly` | Silver | Normalises and consolidates the Last.fm historical data |
+| `reddit_silver` | Manual | Silver | Applies NLP pipeline to Reddit comments |
+| `gold_pipeline` | `@weekly` | Gold | Governance KPIs + storytelling aggregations with PySpark |
 
 ---
 
-## Inicio Rápido
+## Quick Start
 
 ```bash
-# 1. Configurar variables de entorno
-cp .env.example .env   # editar LASTFM_API_KEY
+# 1. Set up environment variables
+cp .env.example .env   # edit LASTFM_API_KEY
 
-# 2. Construir imagen (incluye Java + PySpark) y levantar stack
+# 2. Build image (includes Java + PySpark) and start stack
 docker compose build
 docker compose up -d
 
 # 3. Airflow UI
-# http://localhost:8080  |  usuario: admin  |  contraseña: admin
+# http://localhost:8080  |  user: admin  |  password: admin
 
-# 4. Scraping manual de Reddit (ejecutar desde la raíz del proyecto)
+# 4. Manual Reddit scraping (run from project root)
 poetry run python workshop_1/scraping/scraping_reddit.py
 ```
 
 ---
 
-## Fuentes de Datos
+## Data Sources
 
-| Fuente | Tipo | Método | Frecuencia |
+| Source | Type | Method | Frequency |
 |---|---|---|---|
-| [Last.fm API](https://www.last.fm/api) | API REST | `chart.getTopArtists`, `chart.getTopTracks` | Diaria |
+| [Last.fm API](https://www.last.fm/api) | REST API | `chart.getTopArtists`, `chart.getTopTracks` | Daily |
 | [r/indieheads](https://old.reddit.com/r/indieheads/) | Web scraping | BeautifulSoup + old.reddit.com | Manual |
 | [r/hiphopheads](https://old.reddit.com/r/hiphopheads/) | Web scraping | BeautifulSoup + old.reddit.com | Manual |

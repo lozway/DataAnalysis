@@ -1,13 +1,13 @@
-# Workshop 1 — Definición del Proyecto e Investigación de Fuentes
+# Workshop 1 — Project Definition and Source Research
 
-**Curso:** Programación para Análisis de Datos — Semestre 2026-I  
-**Proyecto:** Music Artists & Albums Public Perception
+**Course:** Data Analysis Programming — Semester 2026-I  
+**Project:** Music Artists & Albums Public Perception
 
 ---
 
-## Equipo
+## Team
 
-| Nombre | Código |
+| Name | Student ID |
 |---|---|
 | Carlos Andres Celis Herrera | 20222020051 |
 | Juan Diego Lozada Gonzalez | 20222020014 |
@@ -15,68 +15,68 @@
 
 ---
 
-## Objetivo
+## Objective
 
-Definir el alcance del proyecto, validar las fuentes de datos y establecer la estrategia de extracción. Este workshop produce los primeros datos crudos del pipeline y establece la arquitectura base de carpetas.
+Define the project scope, validate data sources and establish the extraction strategy. This workshop produces the first raw data for the pipeline and sets up the base folder architecture.
 
 ---
 
-## Fuentes Validadas
+## Validated Data Sources
 
 ### 1. API — Last.fm
-- **Endpoints usados:** `chart.getTopArtists`, `chart.getTopTracks`
-- **Autenticación:** API Key vía variable de entorno `LASTFM_API_KEY`
-- **Campos relevantes:**
-  - Artistas: `name`, `playcount`, `listeners`, `mbid`, `url`
+- **Endpoints used:** `chart.getTopArtists`, `chart.getTopTracks`
+- **Authentication:** API Key via `LASTFM_API_KEY` environment variable
+- **Relevant fields:**
+  - Artists: `name`, `playcount`, `listeners`, `mbid`, `url`
   - Tracks: `name`, `duration`, `playcount`, `listeners`, `artist.name`, `mbid`
 - **Script:** `data_api.py`
 
 ### 2. Web Scraping — Reddit
-- **Comunidades:** `r/indieheads` y `r/hiphopheads`
-- **Método:** BeautifulSoup sobre `old.reddit.com` (HTML estático, sin API key)
-- **Filtro:** Posts con keywords de reacción: `[FRESH]`, `thoughts`, `opinion`, `rate`, `album`, `aoty`, `underrated`, etc.
-- **Datos extraídos por post:** título, score (karma), hasta 5 comentarios de primer nivel
+- **Communities:** `r/indieheads` and `r/hiphopheads`
+- **Method:** BeautifulSoup on `old.reddit.com` (static HTML, no API key required)
+- **Filter:** Posts containing reaction keywords: `[FRESH]`, `thoughts`, `opinion`, `rate`, `album`, `aoty`, `underrated`, etc.
+- **Data extracted per post:** title, score (karma), up to 5 top-level comments
 - **Script:** `scraping/scraping_reddit.py`
 
 ---
 
-## Estructura de la Carpeta
+## Folder Structure
 
 ```
 workshop_1/
 ├── data/
-│   ├── lastfm_music_20260321_222004.json   # Muestra API Last.fm (artistas)
-│   └── reddit_music_opinions.json          # Muestra Reddit scraping
+│   ├── lastfm_music_20260321_222004.json   # Last.fm API sample (artists)
+│   └── reddit_music_opinions.json          # Reddit scraping sample
 ├── scraping/
 │   └── scraping_reddit.py                  # Web scraper (BeautifulSoup)
-├── data_api.py                             # Script de prueba Last.fm API
+├── data_api.py                             # Last.fm API test script
 └── README.md
 ```
 
 ---
 
-## Estrategia de Extracción
+## Extraction Strategy
 
-| Aspecto | Decisión |
+| Aspect | Decision |
 |---|---|
-| Formato | JSON crudo con wrapper de metadatos |
-| Nomenclatura | `{fuente}_{tema}_{YYYYMMDD}_{HHMMSS}.json` |
-| Almacenamiento | `datalake_bronze/` — inmutable, un archivo por ejecución |
-| Orquestación | Apache Airflow (DAG `lastfm_ingest` para producción) |
+| Format | Raw JSON with metadata wrapper |
+| Naming | `{source}_{topic}_{YYYYMMDD}_{HHMMSS}.json` |
+| Storage | `datalake_bronze/` — immutable, one file per run |
+| Orchestration | Apache Airflow (DAG `lastfm_ingest` for production) |
 
 ---
 
-## Ejecutar el Scraper
+## Run the Scraper
 
 ```powershell
-# Desde la raíz del proyecto
+# From the project root
 poetry run python workshop_1/scraping/scraping_reddit.py
 ```
 
-Genera un archivo en `datalake_bronze/reddit/reddit_music_opinions_YYYYMMDD_HHMMSS.json` con aproximadamente 70 registros (35 por subreddit).
+Generates a file in `datalake_bronze/reddit/reddit_music_opinions_YYYYMMDD_HHMMSS.json` with approximately 70 records (35 per subreddit).
 
 ---
 
-## Entregable Principal
+## Main Deliverable
 
-[**Reporte Workshop 1 (PDF)**](./WORKSHOP1_Music_Artists_Albums.pdf) — Documento técnico con User Stories, arquitectura general y caracterización de fuentes.
+[**Workshop 1 Report (PDF)**](./WORKSHOP1_Music_Artists_Albums.pdf) — Full technical report including User Stories, architecture overview and source characterisation.

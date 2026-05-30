@@ -1,65 +1,65 @@
-# dashboard — Aplicación de Visualización
+# dashboard — Visualisation Application
 
-Contiene la aplicación Plotly Dash que consume los Parquet de `datalake_gold/` para presentar el análisis de percepción pública de música al usuario funcional.
-
----
-
-## Propósito
-
-El dashboard permite a analistas de sellos discográficos y managers de artistas:
-
-- Ver la **distribución de sentimiento** (positivo / negativo / neutral) sobre los comentarios de Reddit
-- Seguir la **evolución temporal del sentimiento** semana a semana
-- Identificar los **términos más frecuentes** en las discusiones de álbumes
-- Comparar **artistas más escuchados** en Last.fm vs. artistas más mencionados en Reddit
-- Revisar el **top de tracks** por reproducciones globales
+Contains the Plotly Dash application that consumes the `datalake_gold/` Parquet files to present the public music perception analysis to the functional user.
 
 ---
 
-## Fuente de Datos
+## Purpose
 
-El dashboard lee directamente de `datalake_gold/`:
+The dashboard allows music label analysts and artist managers to:
 
-| Archivo | Uso |
+- View the **sentiment distribution** (positive / negative / neutral) across Reddit comments
+- Track the **temporal evolution of sentiment** week by week
+- Identify the **most frequent terms** in album discussions
+- Compare **most-listened artists** on Last.fm vs. **most-mentioned artists** on Reddit
+- Review the **top tracks** by global play count
+
+---
+
+## Data Source
+
+The dashboard reads directly from `datalake_gold/`:
+
+| File | Usage |
 |---|---|
-| `storytelling_*.parquet` | Todas las visualizaciones del dashboard |
-| `governance_*.parquet` | Panel de calidad de datos (KPIs internos) |
+| `storytelling_*.parquet` | All dashboard visualisations |
+| `governance_*.parquet` | Data quality KPI panel (internal metrics) |
 
-Se selecciona automáticamente el archivo más reciente de cada tipo.
-
----
-
-## Narrativa del Dashboard
-
-> **"¿Qué está hablando la comunidad y qué tan positivo es?"**
-
-El hilo conductor es el contraste entre popularidad cuantitativa (Last.fm: reproducciones, oyentes) y percepción cualitativa (Reddit: sentimiento, temas mencionados). Un artista puede tener millones de plays en Last.fm mientras su recepción en Reddit es mixta o negativa — o viceversa, un artista emergente genera conversación entusiasta antes de escalar en los charts.
-
-### Visualizaciones planeadas
-
-1. **Distribución de sentimiento** — gráfico de torta o barras apiladas (positivo / negativo / neutral)
-2. **Tendencia de sentimiento** — línea temporal con score promedio por semana
-3. **Top Keywords** — nube de palabras o barras horizontales con los 25 términos más frecuentes
-4. **Tipos de comentario** — barras con `recommendation`, `opinion`, `mixed`, `other`
-5. **Top artistas Last.fm** — barras horizontales por oyentes únicos
-6. **Top tracks Last.fm** — tabla con track, artista, reproducciones
-7. **Artistas mencionados en Reddit** — barras con cantidad de menciones y sentimiento promedio
-8. **KPIs de gobernanza** — tabla de métricas de calidad (null rates, volumen, compliance)
+The most recent file of each type is selected automatically.
 
 ---
 
-## Stack Técnico
+## Dashboard Narrative
 
-| Componente | Tecnología |
+> **"What is the community talking about, and how positive is it?"**
+
+The central thread is the contrast between quantitative popularity (Last.fm: plays, listeners) and qualitative perception (Reddit: sentiment, mentioned topics). An artist can have millions of Last.fm plays while Reddit reception is mixed or negative — or conversely, an emerging artist generates enthusiastic conversation before scaling in the charts.
+
+### Planned Visualisations
+
+1. **Sentiment distribution** — pie or stacked bar chart (positive / negative / neutral)
+2. **Sentiment trend** — time series with average score per week
+3. **Top keywords** — word cloud or horizontal bar chart with the 25 most frequent terms
+4. **Comment type breakdown** — bars for `recommendation`, `opinion`, `mixed`, `other`
+5. **Top Last.fm artists** — horizontal bars by unique listeners
+6. **Top Last.fm tracks** — table with track, artist, play count
+7. **Artists mentioned on Reddit** — bars with mention count and average sentiment
+8. **Governance KPIs** — data quality metrics table (null rates, volume, compliance)
+
+---
+
+## Tech Stack
+
+| Component | Technology |
 |---|---|
-| Framework UI | Plotly Dash |
-| Visualizaciones | Plotly Express / Graph Objects |
-| Lectura de datos | PyArrow / Pandas |
-| Servidor | Flask (incluido en Dash) |
+| UI Framework | Plotly Dash |
+| Visualisations | Plotly Express / Graph Objects |
+| Data reading | PyArrow / Pandas |
+| Server | Flask (bundled with Dash) |
 
 ---
 
-## Ejecutar (pendiente de implementación)
+## Run (pending implementation)
 
 ```powershell
 poetry run python dashboard/app.py
