@@ -51,6 +51,10 @@ STOP_WORDS = {
     "got", "can", "will", "would", "could", "should", "one", "all", "more",
     "also", "very", "really", "about", "there", "what", "when", "how",
     "who", "which", "than", "into", "other", "been", "some", "any",
+    # Ruido detectado en keywords de Reddit (bots, links, plataformas)
+    "links", "bot", "message", "send", "youtube", "deezer", "spotify",
+    "http", "www", "com", "amp", "gt", "lt", "via", "here", "check",
+    "listen", "song", "songs", "track", "tracks", "playlist", "link",
 }
 
 # ──────────────────────────────────────────────
@@ -72,12 +76,51 @@ def _get_spark(app_name: str):
 
 
 def _save_parquet(rows: list, schema: pa.Schema, folder: str, filename: str) -> str:
+    """
+    Append-with-dedup: si el archivo ya existe, lee el histórico,
+    concatena los nuevos registros y deduplica por (todas las columnas
+    excepto computed_at) + date(computed_at), preservando un snapshot
+    por run semanal. Si no existe, escribe directamente.
+    """
+    import pandas as pd
+
     os.makedirs(folder, exist_ok=True)
     filepath = os.path.join(folder, filename)
-    table = pa.table(
-        {f.name: [r[i] for r in rows] for i, f in enumerate(schema)},
-        schema=schema,
-    )
+
+    # Construir DataFrame con los nuevos registros
+    new_df = pd.DataFrame(rows, columns=[f.name for f in schema])
+
+    if os.path.exists(filepath):
+        # Leer histórico existente
+        existing_df = pq.read_table(filepath).to_pandas()
+        combined   = pd.concat([existing_df, new_df], ignore_index=True)
+
+        # Clave de dedup: todos los campos de dimensión + fecha del run
+        # Preserva un registro por (dimensión + día), elimina runs duplicados del mismo día
+        dim_cols  = [f.name for f in schema if f.name != "computed_at"]
+        combined["_date"] = pd.to_datetime(combined["computed_at"]).dt.date.astype(str)
+        dedup_key = dim_cols + ["_date"]
+        combined  = combined.drop_duplicates(subset=dedup_key, keep="last")
+        combined  = combined.drop(columns=["_date"]).reset_index(drop=True)
+
+        print(f"   📚 Histórico: {len(existing_df)} + {len(new_df)} nuevos → {len(combined)} tras dedup")
+        df_to_write = combined
+    else:
+        print(f"   🆕 Primer run — escribiendo {len(new_df)} registros")
+        df_to_write = new_df
+
+    # Castear tipos según schema antes de escribir
+    for field in schema:
+        if field.name not in df_to_write.columns:
+            continue
+        if pa.types.is_integer(field.type):
+            df_to_write[field.name] = df_to_write[field.name].astype("int64")
+        elif pa.types.is_floating(field.type):
+            df_to_write[field.name] = df_to_write[field.name].astype("float64")
+        elif pa.types.is_string(field.type):
+            df_to_write[field.name] = df_to_write[field.name].astype("string")
+
+    table = pa.Table.from_pandas(df_to_write, schema=schema, preserve_index=False)
     pq.write_table(table, filepath, compression="snappy")
     return filepath
 
@@ -191,8 +234,7 @@ def gold_pipeline_dag():
 
         spark.stop()
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        path_out = _save_parquet(rows, GOVERNANCE_SCHEMA, GOLD_PATH, f"governance_{timestamp}.parquet")
+        path_out = _save_parquet(rows, GOVERNANCE_SCHEMA, GOLD_PATH, "governance_current.parquet")
         print(f"✅ Governance — {len(rows)} KPIs → {path_out}")
         return path_out
 
@@ -342,9 +384,13 @@ def gold_pipeline_dag():
         if glob_module.glob(os.path.join(SILVER_ARTISTS_PATH, "*.parquet")):
             df_a = spark.read.parquet(SILVER_ARTISTS_PATH)
             top_artists = (
-                df_a.orderBy(F.col("listeners").desc())
+                df_a.groupBy("name")
+                    .agg(
+                        F.max("listeners").alias("listeners"),
+                        F.max("playcount").alias("playcount"),
+                    )
+                    .orderBy(F.col("listeners").desc())
                     .limit(20)
-                    .select("name", "listeners", "playcount")
                     .collect()
             )
             total_listeners = sum(r["listeners"] for r in top_artists) or 1
@@ -372,9 +418,13 @@ def gold_pipeline_dag():
         if glob_module.glob(os.path.join(SILVER_TRACKS_PATH, "*.parquet")):
             df_t = spark.read.parquet(SILVER_TRACKS_PATH)
             top_tracks = (
-                df_t.orderBy(F.col("playcount").desc())
+                df_t.groupBy("name", "artist_name")
+                    .agg(
+                        F.max("playcount").alias("playcount"),
+                        F.max("listeners").alias("listeners"),
+                    )
+                    .orderBy(F.col("playcount").desc())
                     .limit(20)
-                    .select("name", "artist_name", "playcount", "listeners")
                     .collect()
             )
             total_plays = sum(r["playcount"] for r in top_tracks) or 1
@@ -398,8 +448,7 @@ def gold_pipeline_dag():
 
         spark.stop()
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        path_out = _save_parquet(rows, STORYTELLING_SCHEMA, GOLD_PATH, f"storytelling_{timestamp}.parquet")
+        path_out = _save_parquet(rows, STORYTELLING_SCHEMA, GOLD_PATH, "storytelling_current.parquet")
         print(f"✅ Storytelling — {len(rows)} filas → {path_out}")
         return path_out
 
